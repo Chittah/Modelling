@@ -3,12 +3,18 @@ import numpy as np
 import os
 import traceback
 import time
+import threading
 from scipy.optimize import differential_evolution, least_squares
 from scipy.integrate import solve_ivp
 
 import pandas as pd
 from io import StringIO
 from flask import Response
+
+
+# =============================================================================
+# SECTION 1 – APP SETUP & GLOBAL STATE
+# =============================================================================
 
 # Initialize Flask with your static folder settings
 app = Flask(__name__, static_folder=".", static_url_path="")
@@ -24,6 +30,95 @@ physics_state = {
     "time_unit": "ms",
     "fit_quality": "fast"
 }
+
+fit_cancel_flags = {}
+fit_cancel_lock = threading.Lock()
+fit_progress_state = {}
+fit_progress_lock = threading.Lock()
+
+
+# =============================================================================
+# SECTION 2 – FIT CANCEL & PROGRESS TRACKING
+# =============================================================================
+
+class FitCancelled(Exception):
+    """Raised when user cancels an in-flight fit."""
+
+
+def register_fit_request(fit_request_id):
+    if not fit_request_id:
+        return
+    with fit_cancel_lock:
+        fit_cancel_flags[fit_request_id] = False
+
+
+def cancel_fit_request(fit_request_id):
+    if not fit_request_id:
+        return
+    with fit_cancel_lock:
+        fit_cancel_flags[fit_request_id] = True
+
+
+def is_fit_cancelled(fit_request_id):
+    if not fit_request_id:
+        return False
+    with fit_cancel_lock:
+        return bool(fit_cancel_flags.get(fit_request_id, False))
+
+
+def clear_fit_request(fit_request_id):
+    if not fit_request_id:
+        return
+    with fit_cancel_lock:
+        fit_cancel_flags.pop(fit_request_id, None)
+
+
+def init_fit_progress(fit_request_id):
+    if not fit_request_id:
+        return
+    with fit_progress_lock:
+        fit_progress_state[fit_request_id] = {
+            "seq": 0,
+            "status": "running",
+            "message": "Fit request received.",
+            "updated_at": time.time(),
+        }
+
+
+def update_fit_progress(fit_request_id, **fields):
+    if not fit_request_id:
+        return
+    with fit_progress_lock:
+        state = fit_progress_state.get(fit_request_id, {
+            "seq": 0,
+            "status": "running",
+            "message": "",
+            "updated_at": time.time(),
+        })
+        state["seq"] = int(state.get("seq", 0)) + 1
+        state.update(fields)
+        state["updated_at"] = time.time()
+        fit_progress_state[fit_request_id] = state
+
+
+def get_fit_progress(fit_request_id):
+    if not fit_request_id:
+        return None
+    with fit_progress_lock:
+        state = fit_progress_state.get(fit_request_id)
+        return dict(state) if state else None
+
+
+def clear_fit_progress(fit_request_id):
+    if not fit_request_id:
+        return
+    with fit_progress_lock:
+        fit_progress_state.pop(fit_request_id, None)
+
+
+# =============================================================================
+# SECTION 3 – PHYSICS ENGINE: UCOdeModel (11-state Yb³⁺/Tm³⁺ ODE system)
+# =============================================================================
 
 class UCOdeModel:
     """11-state physics engine for Yb-Tm systems."""
@@ -50,6 +145,10 @@ class UCOdeModel:
         dtm8 = W5*Yb_e*Tm7 - (A81)*Tm8
         return [dyb_g, dyb_e, dtm0, dtm1, dtm2, dtm3, dtm4, dtm5, dtm6, dtm7, dtm8]
 
+
+# =============================================================================
+# SECTION 4 – METRIC & ANALYSIS UTILITIES
+# =============================================================================
 
 def compute_trace_metrics(time_axis, y):
     """Compute rise/decay timing metrics for a normalized trace."""
@@ -162,9 +261,400 @@ def classify_parameter_roles(state_idx):
         "note": "Direct: appears explicitly in the selected-state equation. Indirect: influences through coupled populations. Weakly identifiable: usually lower sensitivity for this emission channel.",
     }
 
-def run_fitting(time_ms, intensity, pulse_us, state_idx, doping_yb, doping_tm, fit_quality="fast", optimize_all_points=False, lit_params=None, use_775_calibration=False, emission_key=None):
+
+# =============================================================================
+# SECTION 5 – KINETIC CONSTANTS & FORWARD ODE SIMULATION
+# =============================================================================
+
+def _default_kinetic_params():
+    """Return the default 20-element kinetic parameter array used for forward simulation."""
+    return np.array([
+        5.0,   # Rp    – pump rate (ms^-1)
+        1.0,   # Ay    – Yb spontaneous decay rate
+        5.0,   # W1    – ET1 Yb→Tm(³H₆→³H₅)
+        5.0,   # W2    – ET2 Yb→Tm(³F₄→³H₄)
+        2.0,   # W3    – ET3 Yb→Tm(³H₄→¹G₄)
+        1.0,   # W4    – ET4 Yb→Tm(¹G₄→¹D₂)
+        0.5,   # W5    – ET5 Yb→Tm(¹D₂→³P)
+        50.0,  # k21   – Tm(³H₅→³F₄) fast NR
+        20.0,  # k35   – Tm(³F₂→³H₄) phonon relaxation
+        1.0,   # A10   – Tm1→Tm0 (1800 nm)
+        0.33,  # A50   – Tm5→Tm0 (775 nm)
+        2.0,   # A60   – Tm6→Tm0 (477 nm)
+        0.5,   # A61   – Tm6→Tm1 (645 nm)
+        1.5,   # A70   – Tm7→Tm0 (362 nm)
+        0.5,   # A71   – Tm7→Tm1 (452 nm)
+        2.0,   # A80   – Tm8→Tm0
+        2.0,   # A81   – Tm8→Tm1 (345 nm)
+        5.0,   # Wcr   – cross-relaxation
+        0.5,   # Wb    – back energy transfer ³H₄→Yb
+        0.0,   # T_offset (ms)
+    ], dtype=float)
+
+
+_SIM_PARAM_NAMES = [
+    "Rp", "Ay", "W1", "W2", "W3", "W4", "W5", "k21", "k35",
+    "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "T_offset"
+]
+
+# Row in solve_ivp sol.y for each emission channel (indexed directly from ODE state vector)
+_EMISSION_SOL_ROW = {"775": 7, "477": 8, "645": 8, "362": 9, "452": 9, "345": 10}
+
+_HOST_PHONON_ENERGY_CM = {
+    "NaYF4": 350.0,
+    "YF3": 360.0,
+    "GdF3": 370.0,
+    "Y2O3": 550.0,
+    "YLF": 450.0,
+    "YAG": 700.0,
+}
+
+
+def _parse_numeric_list(values):
+    if not isinstance(values, (list, tuple)):
+        return []
+    out = []
+    for v in values:
+        try:
+            fv = float(v)
+            if np.isfinite(fv):
+                out.append(fv)
+        except Exception:
+            continue
+    return out
+
+
+def _apply_host_annealing_influence(
+    base_params,
+    host_material="NaYF4",
+    annealing_c=500.0,
+    phonon_energy_cm=None,
+    host_mole_factor=5.0,
+):
+    """Apply host/lattice/annealing scaling to kinetic parameters for simulation/estimation."""
+    p = np.asarray(base_params, dtype=float).copy()
+    if p.size < 20:
+        p = np.pad(p, (0, 20 - p.size))
+
+    host_key = str(host_material or "NaYF4")
+    default_phonon = float(_HOST_PHONON_ENERGY_CM.get(host_key, 350.0))
+    phonon_cm = float(default_phonon if phonon_energy_cm is None else phonon_energy_cm)
+    phonon_cm = float(np.clip(phonon_cm, 120.0, 1200.0))
+    anneal = float(annealing_c if annealing_c is not None else 500.0)
+    host_mole = float(host_mole_factor if host_mole_factor is not None else 5.0)
+    host_mole = float(np.clip(host_mole, 1.0, 20.0))
+
+    # Host influence: higher phonon hosts generally increase non-radiative channels.
+    host_nr_factor = float(np.power(max(phonon_cm, 150.0) / 350.0, 0.55))
+    host_et_factor = float(np.power(350.0 / max(phonon_cm, 150.0), 0.20))
+    host_rad_factor = float(np.power(350.0 / max(phonon_cm, 150.0), 0.08))
+
+    # Annealing influence: moderate annealing improves crystallinity, excessive annealing can re-introduce defects.
+    quality = float(np.clip((anneal - 300.0) / 500.0, -0.4, 1.0))
+    over_anneal = max(anneal - 900.0, 0.0)
+    anneal_et_factor = 1.0 + 0.20 * quality
+    anneal_rad_factor = 1.0 + 0.08 * quality
+    anneal_nr_factor = 1.0 - 0.25 * quality + 0.15 * (over_anneal / 600.0)
+
+    # Host mole factor (reference 5) modulates dopant interaction density.
+    host_mole_ratio = host_mole / 5.0
+    mole_et_factor = float(np.power(1.0 / max(host_mole_ratio, 1e-6), 0.35))
+    mole_nr_factor = float(np.power(1.0 / max(host_mole_ratio, 1e-6), 0.15))
+    mole_rad_factor = float(np.power(max(host_mole_ratio, 1e-6), 0.08))
+
+    et_factor = host_et_factor * anneal_et_factor * mole_et_factor
+    nr_factor = host_nr_factor * anneal_nr_factor * mole_nr_factor
+    rad_factor = host_rad_factor * anneal_rad_factor * mole_rad_factor
+
+    # ET terms
+    p[2:7] *= et_factor
+    # Non-radiative / back-transfer dominated terms
+    p[7] *= nr_factor   # k21
+    p[8] *= nr_factor   # k35
+    p[17] *= nr_factor  # Wcr
+    p[18] *= nr_factor  # Wb
+    # Radiative terms (and Yb intrinsic decay)
+    p[1] *= rad_factor  # Ay
+    p[9:17] *= rad_factor
+
+    return p, {
+        "host_material": host_key,
+        "annealing_c": anneal,
+        "phonon_cm": phonon_cm,
+        "host_mole_factor": host_mole,
+        "host_mole_ratio_vs5": host_mole_ratio,
+        "mole_et_factor": mole_et_factor,
+        "mole_nr_factor": mole_nr_factor,
+        "mole_rad_factor": mole_rad_factor,
+        "host_nr_factor": host_nr_factor,
+        "host_et_factor": host_et_factor,
+        "host_rad_factor": host_rad_factor,
+        "anneal_nr_factor": anneal_nr_factor,
+        "anneal_et_factor": anneal_et_factor,
+        "anneal_rad_factor": anneal_rad_factor,
+        "combined_nr_factor": nr_factor,
+        "combined_et_factor": et_factor,
+        "combined_rad_factor": rad_factor,
+    }
+
+
+def simulate_forward(
+    yb_pct,
+    tm_pct,
+    emissions_list,
+    pulse_us,
+    time_arr,
+    params=None,
+    host_material="NaYF4",
+    annealing_c=500.0,
+    phonon_energy_cm=None,
+    host_mole_factor=5.0,
+):
+    """
+    Pure forward ODE simulation — no fitting, no optimization.
+
+    Runs the UCOdeModel for given composition and returns a normalized intensity
+    trace per emission channel. Shares the same ODE system and observable mapping
+    as run_fitting so results are directly comparable with fitted traces.
+
+    Parameters
+    ----------
+    yb_pct, tm_pct : float  – doping concentrations in %
+    emissions_list  : list of str  – e.g. ['775', '477', '345']
+    pulse_us        : float  – excitation pulse width in µs
+    time_arr        : 1-D np.ndarray  – time axis in ms
+    params          : array-like of length 20, or None for physical defaults
+
+    Returns
+    -------
+    dict  {emission_str: np.ndarray of normalized intensity (0–1)}
+    """
+    p_base = _default_kinetic_params() if params is None else np.asarray(params, dtype=float).copy()
+    p, _ = _apply_host_annealing_influence(
+        p_base,
+        host_material=host_material,
+        annealing_c=annealing_c,
+        phonon_energy_cm=phonon_energy_cm,
+        host_mole_factor=host_mole_factor,
+    )
+
+    p_width_ms = max(float(pulse_us) / 1000.0, 1e-6)
+    yb_frac = float(yb_pct) / 100.0
+    tm_frac = float(tm_pct) / 100.0
+    y0_sim = [yb_frac, 0.0, tm_frac, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    t_arr = np.asarray(time_arr, dtype=float)
+    t_offset = float(p[19])
+    t_shifted = t_arr - t_offset
+    mask = t_shifted >= 0.0
+
+    zero_result = {str(em): np.zeros(t_arr.size) for em in emissions_list}
+    if not np.any(mask):
+        return zero_result
+
+    t_eval = t_shifted[mask]
+    t_end = float(t_eval[-1])
+    if t_end <= 0:
+        return zero_result
+
+    try:
+        sol = solve_ivp(
+            UCOdeModel.system,
+            [0.0, t_end],
+            y0_sim,
+            t_eval=t_eval,
+            args=(p[:19], p_width_ms),
+            method="Radau",
+            rtol=1e-6,
+            atol=1e-9,
+        )
+    except Exception:
+        return zero_result
+
+    if (not sol.success) or (sol.y.shape[1] != t_eval.size):
+        return zero_result
+
+    results = {}
+    for em in emissions_list:
+        em_s = str(em)
+        row = _EMISSION_SOL_ROW.get(em_s)
+        if row is None or row >= sol.y.shape[0]:
+            results[em_s] = np.zeros(t_arr.size)
+            continue
+
+        if em_s == "477":
+            obs = p[11] * sol.y[row]    # A60 * Tm6
+        elif em_s == "645":
+            obs = p[12] * sol.y[row]    # A61 * Tm6
+        else:
+            obs = sol.y[row]
+
+        obs = np.clip(obs, 0.0, np.inf)
+        full_obs = np.zeros(t_arr.size)
+        full_obs[mask] = obs
+        mx = float(np.max(full_obs))
+        if mx > 1e-12:
+            full_obs /= mx
+        results[em_s] = full_obs
+
+    return results
+
+
+def simulate_single_doped_tm_trace(time_ms, tau_fast_ms=0.3, tau_slow_ms=1.5, mix_alpha=0.65, rise_ms=0.05):
+    """Single-doped Tm surrogate trace: finite rise + bi-exponential decay."""
+    t = np.asarray(time_ms, dtype=float)
+    t = np.clip(t, 0.0, np.inf)
+    tau_fast = max(float(tau_fast_ms), 1e-6)
+    tau_slow = max(float(tau_slow_ms), 1e-6)
+    alpha = float(np.clip(float(mix_alpha), 0.0, 1.0))
+    rise = max(float(rise_ms), 1e-6)
+
+    rise_term = 1.0 - np.exp(-t / rise)
+    decay_term = alpha * np.exp(-t / tau_fast) + (1.0 - alpha) * np.exp(-t / tau_slow)
+    y = np.clip(rise_term * decay_term, 0.0, np.inf)
+    mx = float(np.max(y))
+    if mx > 1e-12:
+        y /= mx
+    return y
+
+
+def fit_single_doped_tm_trace(time_ms, intensity, initial_guess=None):
+    """Optimize a single-doped Tm surrogate model against measured trace."""
+    t = np.asarray(time_ms, dtype=float)
+    y = np.asarray(intensity, dtype=float)
+    if t.size < 8 or y.size != t.size:
+        raise ValueError("Need at least 8 points with matching time/intensity sizes")
+
+    y = (y - np.min(y)) / (np.max(y) + 1e-12)
+
+    x0 = np.array(initial_guess or [0.25, 1.50, 0.65, 0.05], dtype=float)
+    lb = np.array([0.01, 0.05, 0.05, 0.001], dtype=float)
+    ub = np.array([3.00, 12.0, 0.95, 1.000], dtype=float)
+
+    def residuals(x):
+        yy = simulate_single_doped_tm_trace(
+            t,
+            tau_fast_ms=float(x[0]),
+            tau_slow_ms=float(x[1]),
+            mix_alpha=float(x[2]),
+            rise_ms=float(x[3]),
+        )
+        return y - yy
+
+    res = least_squares(residuals, x0=x0, bounds=(lb, ub), method="trf", loss="soft_l1", max_nfev=800)
+    x_best = res.x if res.success else x0
+    y_fit = simulate_single_doped_tm_trace(t, x_best[0], x_best[1], x_best[2], x_best[3])
+    sse = float(np.sum((y - y_fit) ** 2))
+    denom = float(np.sum((y - np.mean(y)) ** 2) + 1e-12)
+    r2 = 1.0 - sse / denom
+
+    return {
+        "fitted_intensity": y_fit,
+        "measured_intensity": y,
+        "r2": float(r2),
+        "params": {
+            "tau_fast_ms": float(x_best[0]),
+            "tau_slow_ms": float(x_best[1]),
+            "mix_alpha": float(x_best[2]),
+            "rise_ms": float(x_best[3]),
+        },
+        "metrics": {
+            "measured": compute_trace_metrics(t, y),
+            "fitted": compute_trace_metrics(t, y_fit),
+        },
+        "diagnostics": {
+            "success": bool(res.success),
+            "nfev": int(getattr(res, "nfev", 0) or 0),
+            "cost": float(getattr(res, "cost", 0.0) or 0.0),
+            "message": str(getattr(res, "message", "")),
+        },
+    }
+
+
+def simulate_upconversion_mechanism_trace(time_ms, mechanism="etuc", params=None):
+    """Surrogate trace generators for non-ETUC upconversion mechanisms."""
+    p = dict(params or {})
+    t = np.asarray(time_ms, dtype=float)
+    t = np.clip(t, 0.0, np.inf)
+
+    tau = max(float(p.get("tau_ms", 1.5)), 1e-6)
+    rise = max(float(p.get("rise_ms", 0.08)), 1e-6)
+    amp = max(float(p.get("amp", 1.0)), 1e-12)
+
+    mech = str(mechanism or "etuc").lower()
+    if mech == "esa":
+        y = amp * np.power((1.0 - np.exp(-t / rise)), 1.6) * np.exp(-t / tau)
+    elif mech == "photon_avalanche":
+        t0 = max(float(p.get("threshold_ms", 0.25)), 1e-6)
+        sharp = max(float(p.get("sharpness", 12.0)), 1.0)
+        gate = 1.0 / (1.0 + np.exp(-sharp * (t - t0)))
+        y = amp * gate * np.exp(-t / tau)
+    elif mech == "energy_migration_mediated":
+        tau_mig = max(float(p.get("migration_ms", 0.35)), 1e-6)
+        y = amp * (1.0 - np.exp(-t / tau_mig)) * np.exp(-t / tau)
+    elif mech == "cooperative":
+        y = amp * np.power((1.0 - np.exp(-t / rise)), 2.0) * np.exp(-t / tau)
+    else:
+        # ETUC default surrogate is intentionally smooth and close to standard rise+decay.
+        y = amp * (1.0 - np.exp(-t / rise)) * np.exp(-t / tau)
+
+    y = np.clip(y, 0.0, np.inf)
+    mx = float(np.max(y))
+    if mx > 1e-12:
+        y /= mx
+    return y
+
+
+def simulate_downconversion_trace(time_ms, params=None):
+    """Simple downconversion response model (single exponential by default)."""
+    p = dict(params or {})
+    t = np.asarray(time_ms, dtype=float)
+    tau = max(float(p.get("tau_ms", 2.4)), 1e-6)
+    y = np.exp(-np.clip(t, 0.0, np.inf) / tau)
+    mx = float(np.max(y))
+    if mx > 1e-12:
+        y /= mx
+    return y
+
+
+def simulate_downshifting_trace(time_ms, params=None):
+    """Simple downshifting response model with finite rise + decay."""
+    p = dict(params or {})
+    t = np.asarray(time_ms, dtype=float)
+    tau = max(float(p.get("tau_ms", 1.8)), 1e-6)
+    rise = max(float(p.get("rise_ms", 0.10)), 1e-6)
+    y = (1.0 - np.exp(-np.clip(t, 0.0, np.inf) / rise)) * np.exp(-np.clip(t, 0.0, np.inf) / tau)
+    mx = float(np.max(y))
+    if mx > 1e-12:
+        y /= mx
+    return y
+
+
+# =============================================================================
+# SECTION 6 – MAIN ODE FITTING ENGINE  (run_fitting)
+# =============================================================================
+
+def run_fitting(time_ms, intensity, pulse_us, state_idx, doping_yb, doping_tm, fit_quality="fast", optimize_all_points=False, lit_params=None, use_775_calibration=False, emission_key=None, cancel_checker=None, target_r2=0.999, adaptive_max_cycles=4, peak_window_boost=1.0, early_rise_boost=1.0, progress_callback=None):
     p_ms_nominal = max(float(pulse_us) / 1000.0, 1e-6)
     y0 = [doping_yb/100, 0, doping_tm/100, 0, 0, 0, 0, 0, 0, 0, 0] #initial conditions set from doping conc
+    emission_key_s = str(emission_key)
+    tm_pct = float(doping_tm) if np.isfinite(doping_tm) else 0.0
+    peak_window_boost = float(np.clip(float(peak_window_boost), 1.0, 2.5))
+    early_rise_boost = float(np.clip(float(early_rise_boost), 1.0, 2.5))
+
+    def check_cancel():
+        if callable(cancel_checker) and cancel_checker():
+            raise FitCancelled("Fit cancelled by user")
+
+    def report_progress(**kwargs):
+        if callable(progress_callback):
+            try:
+                progress_callback(kwargs)
+            except Exception:
+                pass
+
+    check_cancel()
+    report_progress(phase="initialise", message="Initialising optimizer.")
 
     quality_cfg = {
         "fast": {"de_maxiter": 12, "de_popsize": 6, "ls_nfev": 180, "max_points": 320},
@@ -184,11 +674,31 @@ def run_fitting(time_ms, intensity, pulse_us, state_idx, doping_yb, doping_tm, f
     active_set = set(param_roles["direct"])          # always includes T_offset
 
     guided_params_used = []
+    # 477/645 depend strongly on the Tm5 feeder chain. Keeping these fixed can
+    # cause broad/late peaks at higher Tm concentrations, so unlock them here.
+    if emission_key_s in {"477", "645"}:
+        feeder_params = {"W2", "A50", "Wcr"}
+        if tm_pct >= 0.8:
+            feeder_params.update({"Wb", "k35"})
+        active_set.update(feeder_params)
+        guided_params_used = sorted(list(set(guided_params_used).union(feeder_params)))
+
+    # 362/452 (Tm7 channels) are one step downstream of Tm6 and are sensitive to
+    # upstream feeder terms; keep these adjustable to avoid severe underfitting.
+    if emission_key_s in {"362", "452"}:
+        feeder_params = {"W3", "A60", "A61", "Wcr"}
+        if tm_pct >= 0.8:
+            feeder_params.update({"W2", "A50", "k35"})
+        if tm_pct >= 1.5:
+            feeder_params.update({"Wb"})
+        active_set.update(feeder_params)
+        guided_params_used = sorted(list(set(guided_params_used).union(feeder_params)))
+
     # First 775 run can estimate feeder-chain terms that guide later 477/645 fits.
     if use_775_calibration and state_idx == 7:
         guided_params = {"W1", "k21", "A10"}
         active_set.update(guided_params)
-        guided_params_used = sorted(list(guided_params))
+        guided_params_used = sorted(list(set(guided_params_used).union(guided_params)))
 
     active_indices = [i for i, n in enumerate(all_param_names) if n in active_set]
     fixed_param_names = [n for i, n in enumerate(all_param_names) if i not in active_indices]
@@ -230,8 +740,14 @@ def run_fitting(time_ms, intensity, pulse_us, state_idx, doping_yb, doping_tm, f
 
     # Fit pulse width as a nuisance parameter to absorb instrument/timing uncertainty.
     fit_pulse_width = True
-    p_ms_lower = max(1e-6, 0.85 * p_ms_nominal)
-    p_ms_upper = max(p_ms_lower + 1e-6, 1.15 * p_ms_nominal)
+    if emission_key_s == "477":
+        # Blue channel often needs a wider IRF window to capture sharp rise at
+        # high Tm where timing mismatch dominates R^2 loss.
+        p_ms_lower = max(1e-6, 0.55 * p_ms_nominal)
+        p_ms_upper = max(p_ms_lower + 1e-6, 1.35 * p_ms_nominal)
+    else:
+        p_ms_lower = max(1e-6, 0.85 * p_ms_nominal)
+        p_ms_upper = max(p_ms_lower + 1e-6, 1.15 * p_ms_nominal)
     if fit_pulse_width:
         bounds_active.append((p_ms_lower, p_ms_upper))
 
@@ -424,15 +940,64 @@ def run_fitting(time_ms, intensity, pulse_us, state_idx, doping_yb, doping_tm, f
             early_mask = np.arange(n) < max(5, n // 4)
 
         # Emphasize early mismatch (where current overshoot persists)
-        early_res = 0.95 * (measured[early_mask] - fitted[early_mask])
+        early_res = (0.95 * early_rise_boost) * (measured[early_mask] - fitted[early_mask])
 
         # Penalize integrated early overshoot/undershoot
         area_m = np.trapz(measured[early_mask], t_arr[early_mask])
         area_f = np.trapz(fitted[early_mask], t_arr[early_mask])
-        area_pen = 5.5 * (area_f - area_m) / (abs(area_m) + 1e-12)
+        area_pen = (5.5 * early_rise_boost) * (area_f - area_m) / (abs(area_m) + 1e-12)
         return early_res, area_pen
 
+    def peak_window_residual_terms(measured, fitted):
+        """Extra local residual around the measured apex to tighten peak matching."""
+        n = measured.size
+        if n < 10:
+            return np.array([], dtype=float), 0.0
+
+        i_pk = int(np.argmax(measured))
+        peak_val = float(measured[i_pk])
+        if peak_val <= 1e-12:
+            return np.array([], dtype=float), 0.0
+
+        # Prefer value-based mask near apex; fallback to a symmetric local window.
+        mask = measured >= (0.90 * peak_val)
+        if np.sum(mask) < 5:
+            half = max(2, n // 35)
+            lo = max(0, i_pk - half)
+            hi = min(n, i_pk + half + 1)
+            mask = np.zeros(n, dtype=bool)
+            mask[lo:hi] = True
+
+        # Emission-specific peak emphasis:
+        # - 645 gets the strongest apex correction.
+        # - 477 gets a lighter, dedicated correction to tighten the shoulder/peak.
+        if emission_key_s == "645":
+            peak_scale = 1.38
+            peak_point_scale = 12.0
+        elif emission_key_s == "477":
+            if tm_pct >= 0.8:
+                peak_scale = 1.42
+                peak_point_scale = 13.2
+            elif tm_pct >= 0.3:
+                peak_scale = 1.36
+                peak_point_scale = 12.2
+            else:
+                peak_scale = 1.31
+                peak_point_scale = 11.4
+        else:
+            peak_scale = 1.15
+            peak_point_scale = 9.5
+
+        if peak_window_boost > 1.0:
+            peak_scale *= peak_window_boost
+            peak_point_scale *= peak_window_boost
+
+        peak_res = peak_scale * (measured[mask] - fitted[mask])
+        peak_point_pen = peak_point_scale * (fitted[i_pk] - measured[i_pk])
+        return peak_res, peak_point_pen
+
     def residual_vector(x_active):
+        check_cancel()
         params_all, p_width_ms = unpack_active(x_active)
         modeled, _ = simulate(params_all, p_width_ms, t_fit)
         if modeled is None:
@@ -441,12 +1006,14 @@ def run_fitting(time_ms, intensity, pulse_us, state_idx, doping_yb, doping_tm, f
         lin_res, log_res, i_pk_m, i_pk_f = residual_core(i_fit, fitted, sqrt_w_fit)
         tail_res, tail_area_pen = tail_residual_terms(t_fit, i_fit, fitted, sqrt_tail_fit)
         early_res, early_area_pen = early_residual_terms(t_fit, i_fit, fitted)
+        peak_res, peak_point_pen = peak_window_residual_terms(i_fit, fitted)
         t_span = np.ptp(t_fit) + 1e-12
         peak_time_pen = 8.0 * (t_fit[i_pk_f] - t_fit[i_pk_m]) / t_span
         peak_amp_pen = 7.5 * (fitted[i_pk_f] - i_fit[i_pk_m])
-        return np.concatenate([lin_res, log_res, early_res, tail_res, np.array([peak_time_pen, peak_amp_pen, early_area_pen, tail_area_pen])])
+        return np.concatenate([lin_res, log_res, early_res, peak_res, tail_res, np.array([peak_time_pen, peak_amp_pen, peak_point_pen, early_area_pen, tail_area_pen])])
 
     def residual_vector_full(x_active):
+        check_cancel()
         params_all, p_width_ms = unpack_active(x_active)
         modeled, _ = simulate(params_all, p_width_ms, time_ms)
         if modeled is None:
@@ -455,18 +1022,25 @@ def run_fitting(time_ms, intensity, pulse_us, state_idx, doping_yb, doping_tm, f
         lin_res, log_res, i_pk_m, i_pk_f = residual_core(intensity, fitted, sqrt_w_full)
         tail_res, tail_area_pen = tail_residual_terms(time_ms, intensity, fitted, sqrt_tail_full)
         early_res, early_area_pen = early_residual_terms(time_ms, intensity, fitted)
+        peak_res, peak_point_pen = peak_window_residual_terms(intensity, fitted)
         t_span = np.ptp(time_ms) + 1e-12
         peak_time_pen = 8.0 * (time_ms[i_pk_f] - time_ms[i_pk_m]) / t_span
         peak_amp_pen = 7.5 * (fitted[i_pk_f] - intensity[i_pk_m])
-        return np.concatenate([lin_res, log_res, early_res, tail_res, np.array([peak_time_pen, peak_amp_pen, early_area_pen, tail_area_pen])])
+        return np.concatenate([lin_res, log_res, early_res, peak_res, tail_res, np.array([peak_time_pen, peak_amp_pen, peak_point_pen, early_area_pen, tail_area_pen])])
 
     def objective(x_active):
+        check_cancel()
         r = residual_vector(x_active)
         return float(np.dot(r, r))
 
     def objective_full(x_active):
+        check_cancel()
         r = residual_vector_full(x_active)
         return float(np.dot(r, r))
+
+    # SciPy may pass convergence as a keyword argument in some versions.
+    def de_cancel_callback(_xk, convergence=None):
+        return bool(callable(cancel_checker) and cancel_checker())
 
     res_global = differential_evolution(
         objective,
@@ -476,7 +1050,10 @@ def run_fitting(time_ms, intensity, pulse_us, state_idx, doping_yb, doping_tm, f
         seed=42,
         tol=1e-3,
         polish=False,
+        callback=de_cancel_callback,
     )
+
+    check_cancel()
 
     res_local = least_squares(
         residual_vector,
@@ -487,6 +1064,8 @@ def run_fitting(time_ms, intensity, pulse_us, state_idx, doping_yb, doping_tm, f
         f_scale=0.05,
         max_nfev=cfg["ls_nfev"],
     )
+
+    check_cancel()
 
     best_active = res_local.x if res_local.success else res_global.x
     best_full, best_pulse_ms = unpack_active(best_active)
@@ -523,22 +1102,32 @@ def run_fitting(time_ms, intensity, pulse_us, state_idx, doping_yb, doping_tm, f
     polish_nfev_total = 0
 
     if fit_quality == "fast":
+        check_cancel()
         r2_now = 1.0 - final_sse / denom
         i_pk_m = int(np.argmax(intensity))
         i_pk_f = int(np.argmax(final_y))
         peak_time_err = abs(time_ms[i_pk_f] - time_ms[i_pk_m]) / (np.ptp(time_ms) + 1e-12)
         peak_amp_err = abs(final_y[i_pk_f] - intensity[i_pk_m]) / (abs(intensity[i_pk_m]) + 1e-12)
 
-        if (r2_now < 0.9995) or (peak_time_err > 0.02) or (peak_amp_err > 0.05):
+        fast_refine_r2 = 0.9999
+        fast_refine_peak_time = 0.02
+        fast_refine_peak_amp = 0.05
+        if emission_key_s == "477":
+            fast_refine_r2 = 0.9997
+            fast_refine_peak_time = 0.015
+            fast_refine_peak_amp = 0.035
+
+        if (r2_now < fast_refine_r2) or (peak_time_err > fast_refine_peak_time) or (peak_amp_err > fast_refine_peak_amp):
             res_refine = least_squares(
                 residual_vector_full,
                 x0=best_active,
                 bounds=(lower, upper),
                 method="trf",
                 loss="soft_l1",
-                f_scale=0.04,
-                max_nfev=400,
+                f_scale=0.035 if emission_key_s == "477" else 0.04,
+                max_nfev=550 if emission_key_s == "477" else 400,
             )
+            check_cancel()
             refine_nfev = int(getattr(res_refine, "nfev", 0) or 0)
             if res_refine.success and (objective_full(res_refine.x) < objective_full(best_active)):
                 candidate_full, candidate_pulse_ms = unpack_active(res_refine.x)
@@ -554,6 +1143,7 @@ def run_fitting(time_ms, intensity, pulse_us, state_idx, doping_yb, doping_tm, f
     ones_full = np.ones_like(intensity)
 
     def residual_l2(x_active):
+        check_cancel()
         params_all, p_width_ms = unpack_active(x_active)
         modeled, _ = simulate(params_all, p_width_ms, time_ms)
         if modeled is None:
@@ -571,6 +1161,7 @@ def run_fitting(time_ms, intensity, pulse_us, state_idx, doping_yb, doping_tm, f
     max_passes, nfev_per_pass = polish_budget
 
     for _ in range(max_passes):
+        check_cancel()
         r2_now = 1.0 - final_sse / denom
         if r2_now >= 0.9999:
             break
@@ -582,6 +1173,7 @@ def run_fitting(time_ms, intensity, pulse_us, state_idx, doping_yb, doping_tm, f
             loss="linear",   # pure L2 — directly minimises SSE
             max_nfev=nfev_per_pass,
         )
+        check_cancel()
         polish_passes_done += 1
         polish_nfev_total += int(getattr(res_polish, "nfev", 0) or 0)
         if not res_polish.success:
@@ -597,6 +1189,125 @@ def run_fitting(time_ms, intensity, pulse_us, state_idx, doping_yb, doping_tm, f
             best_full, best_pulse_ms = unpack_active(best_active)
             final_y = cand_y
             final_sse = cand_sse
+
+    # ── Adaptive R² refinement ──────────────────────────────────────────────────
+    # If R² < 0.9999 after the L2 polish passes, diagnose which region (early
+    # rise, peak window, tail) carries the most residual error, proportionally
+    # boost the weights on that region, and re-run a local refinement.  Repeats
+    # up to MAX_ADAPT_CYCLES times; stops early if no SSE improvement is made so
+    # we never overfit one region at the expense of another.
+    R2_TARGET = float(np.clip(float(target_r2), 0.0, 0.999995))
+    MAX_ADAPT_CYCLES = int(np.clip(int(adaptive_max_cycles), 1, 20))
+    adapt_cycles_done = 0
+    report_progress(
+        phase="adaptive_refine",
+        adaptive_completed_cycles=0,
+        adaptive_max_cycles=MAX_ADAPT_CYCLES,
+        current_r2=float(1.0 - final_sse / denom),
+        message=f"Adaptive refinement started (max {MAX_ADAPT_CYCLES} cycles).",
+    )
+
+    while (1.0 - final_sse / denom) < R2_TARGET and adapt_cycles_done < MAX_ADAPT_CYCLES:
+        check_cancel()
+        adapt_cycles_done += 1
+
+        # ── Diagnose worst region ──
+        res_abs = np.abs(intensity - final_y)
+        i_pk = int(np.argmax(intensity))
+        n_tot = len(intensity)
+        pk_half = max(2, n_tot // 12)
+        pk_lo = max(0, i_pk - pk_half)
+        pk_hi = min(n_tot, i_pk + pk_half)
+
+        early_err = float(np.mean(res_abs[:max(1, i_pk)]))
+        peak_err  = float(np.mean(res_abs[pk_lo:pk_hi]))
+        tail_err  = float(np.mean(res_abs[i_pk:]))
+        total_err = early_err + peak_err + tail_err + 1e-12
+
+        frac_early = early_err / total_err
+        frac_peak  = peak_err  / total_err
+        frac_tail  = tail_err  / total_err
+
+        # Boost grows with each cycle; capped at 3× to stay physical
+        boost   = min(3.0, 1.0 + 0.6 * adapt_cycles_done)
+        w_early = 1.0 + boost * frac_early
+        w_peak  = 1.0 + boost * frac_peak
+        w_tail  = 1.0 + boost * frac_tail
+
+        # ── Build spatially-varying weight array ──
+        adapt_w = np.ones(n_tot, dtype=float)
+        early_mask_a = np.arange(n_tot) < i_pk
+        peak_mask_a  = np.zeros(n_tot, dtype=bool)
+        peak_mask_a[pk_lo:pk_hi] = True
+        tail_mask_a  = np.arange(n_tot) >= i_pk
+        adapt_w[early_mask_a] *= w_early
+        adapt_w[peak_mask_a]  *= w_peak
+        adapt_w[tail_mask_a]  *= w_tail
+        adapt_sqrt_w = np.sqrt(adapt_w)
+
+        # Default-argument capture so each loop iteration gets its own binding
+        def residual_adaptive(x_active,
+                              _sqrt_w=adapt_sqrt_w,
+                              _tail_sqrt=sqrt_tail_full,
+                              _w_tail=w_tail):
+            check_cancel()
+            params_all, p_width_ms = unpack_active(x_active)
+            modeled, _ = simulate(params_all, p_width_ms, time_ms)
+            if modeled is None:
+                return np.full_like(intensity, 1e6)
+            fitted = apply_weighted_scale(intensity, modeled, ones_full)
+            base = _sqrt_w * (intensity - fitted)
+            tail = 0.45 * _w_tail * _tail_sqrt * (intensity - fitted)
+            return np.concatenate([base, tail])
+
+        res_adapt = least_squares(
+            residual_adaptive,
+            x0=best_active,
+            bounds=(lower, upper),
+            method="trf",
+            loss="linear",
+            max_nfev=nfev_per_pass,
+        )
+        check_cancel()
+        polish_passes_done  += 1
+        polish_nfev_total   += int(getattr(res_adapt, "nfev", 0) or 0)
+
+        if not res_adapt.success:
+            break
+        cand_full, cand_pulse_ms = unpack_active(res_adapt.x)
+        cand_modeled, _ = simulate(cand_full, cand_pulse_ms, time_ms)
+        if cand_modeled is None:
+            break
+        # Accept only when overall (unweighted) SSE improves — guards against
+        # over-correcting one region at the expense of the rest.
+        cand_y   = apply_weighted_scale(intensity, cand_modeled, ones_full)
+        cand_sse = float(np.sum((intensity - cand_y) ** 2))
+        if cand_sse < final_sse:
+            best_active    = res_adapt.x
+            best_full, best_pulse_ms = unpack_active(best_active)
+            final_y        = cand_y
+            final_sse      = cand_sse
+            report_progress(
+                phase="adaptive_refine",
+                adaptive_completed_cycles=adapt_cycles_done,
+                adaptive_max_cycles=MAX_ADAPT_CYCLES,
+                current_r2=float(1.0 - final_sse / denom),
+                message=(
+                    f"Adaptive loop {adapt_cycles_done}/{MAX_ADAPT_CYCLES} completed "
+                    f"(R2={1.0 - final_sse / denom:.6f})."
+                ),
+            )
+        else:
+            report_progress(
+                phase="adaptive_refine",
+                adaptive_completed_cycles=adapt_cycles_done,
+                adaptive_max_cycles=MAX_ADAPT_CYCLES,
+                current_r2=float(1.0 - final_sse / denom),
+                message=(
+                    f"Adaptive loop {adapt_cycles_done}/{MAX_ADAPT_CYCLES} made no SSE improvement; stopping."
+                ),
+            )
+            break  # No improvement — stop to avoid diverging from physics
 
     final_r2 = 1.0 - final_sse / denom
 
@@ -625,14 +1336,244 @@ def run_fitting(time_ms, intensity, pulse_us, state_idx, doping_yb, doping_tm, f
             "refine_evaluations": refine_nfev,
             "polish_passes": polish_passes_done,
             "polish_evaluations": polish_nfev_total,
+            "adaptive_r2_cycles": adapt_cycles_done,
             "total_evaluations": total_evals,
         },
         "achieved_r2": float(final_r2),
+        "target_r2": float(R2_TARGET),
+        "adaptive_max_cycles": int(MAX_ADAPT_CYCLES),
+        "peak_window_boost": float(peak_window_boost),
+        "early_rise_boost": float(early_rise_boost),
     }
     # Return the full 19-vector so the route handler can reference all param names uniformly.
     return final_y, best_full, final_sse, diagnostics
 
-# --- ROUTES ---
+
+# =============================================================================
+# SECTION 7 – ROUTE PAYLOAD HELPERS
+# =============================================================================
+
+def _build_time_axis_from_payload(payload):
+    """Read time axis from payload, or create one from (time_max_ms, num_points)."""
+    unit_scale = {"ns": 1e-6, "us": 1e-3, "ms": 1.0}
+    time_unit = str(payload.get("time_unit", physics_state.get("time_unit", "ms")))
+    scale = float(unit_scale.get(time_unit, 1.0))
+
+    t_input = np.asarray(payload.get("time", []), dtype=float)
+    if t_input.size > 0:
+        return t_input * scale
+
+    time_max_ms = float(payload.get("time_max_ms", 15.0))
+    num_points = int(np.clip(int(payload.get("num_points", 500)), 100, 3000))
+    return np.linspace(0.0, time_max_ms, num_points)
+
+
+def _normalise_trace(y):
+    yy = np.asarray(y, dtype=float)
+    if yy.size == 0:
+        return yy
+    yy = yy - np.min(yy)
+    mx = float(np.max(yy))
+    if mx > 1e-12:
+        yy = yy / mx
+    return yy
+
+
+# =============================================================================
+# SECTION 8 – LUMINESCENCE FLOW SOLVERS
+# =============================================================================
+
+def solve_luminescence_simulation_flow(payload):
+    """
+    Separate simulation pipeline for luminescence path selection.
+    This is intentionally distinct from ETUC optimization.
+    """
+    lum_type = str(payload.get("luminescence_type", "upconversion")).lower()
+    up_mech = str(payload.get("upconversion_mechanism", "etuc")).lower()
+    model_system = str(payload.get("material_model", "co_doped_yb_tm")).lower()
+    if model_system == "single_doped_tm":
+        lum_type = "downshifting"
+
+    t_ms = _build_time_axis_from_payload(payload)
+    if t_ms.size == 0:
+        raise ValueError("Time axis is empty")
+
+    if model_system == "single_doped_tm":
+        s = payload.get("single_tm_params") or {}
+        y = simulate_single_doped_tm_trace(
+            t_ms,
+            tau_fast_ms=float(s.get("tau_fast_ms", 0.25)),
+            tau_slow_ms=float(s.get("tau_slow_ms", 1.5)),
+            mix_alpha=float(s.get("mix_alpha", 0.65)),
+            rise_ms=float(s.get("rise_ms", 0.05)),
+        )
+        return {
+            "ok": True,
+            "flow": {"luminescence_type": lum_type, "mechanism": up_mech, "material_model": model_system},
+            "time_ms": t_ms.tolist(),
+            "channels": {
+                str(payload.get("emission", "775")): {
+                    "intensity": y.tolist(),
+                    "metrics": compute_trace_metrics(t_ms, y),
+                }
+            },
+        }
+
+    if lum_type == "upconversion" and up_mech == "etuc":
+        emissions = payload.get("emissions")
+        if not emissions:
+            emissions = [str(payload.get("emission", "477"))]
+        yb = float(payload.get("doping_yb", physics_state.get("doping_yb", 10.0)))
+        tm = float(payload.get("doping_tm", physics_state.get("doping_tm", 0.1)))
+        pulse_us = float(payload.get("pulse_width_us", 100.0))
+
+        params = _default_kinetic_params()
+        lit_params = payload.get("lit_params") or {}
+        if isinstance(lit_params, dict):
+            for name, val in lit_params.items():
+                if name in _SIM_PARAM_NAMES:
+                    params[_SIM_PARAM_NAMES.index(name)] = float(val)
+
+        host_material = payload.get("host_material", "NaYF4")
+        annealing_c = float(payload.get("annealing_c", 500.0))
+        phonon_energy_cm = payload.get("phonon_energy_cm", None)
+        if phonon_energy_cm is not None:
+            phonon_energy_cm = float(phonon_energy_cm)
+        host_mole_factor = float(payload.get("host_mole_factor", 5.0))
+        traces = simulate_forward(
+            yb,
+            tm,
+            [str(e) for e in emissions],
+            pulse_us,
+            t_ms,
+            params,
+            host_material=host_material,
+            annealing_c=annealing_c,
+            phonon_energy_cm=phonon_energy_cm,
+            host_mole_factor=host_mole_factor,
+        )
+        channels = {
+            em: {"intensity": arr.tolist(), "metrics": compute_trace_metrics(t_ms, arr)}
+            for em, arr in traces.items()
+        }
+        _, influence = _apply_host_annealing_influence(
+            params,
+            host_material=host_material,
+            annealing_c=annealing_c,
+            phonon_energy_cm=phonon_energy_cm,
+            host_mole_factor=host_mole_factor,
+        )
+        return {
+            "ok": True,
+            "flow": {"luminescence_type": lum_type, "mechanism": up_mech, "material_model": model_system},
+            "time_ms": t_ms.tolist(),
+            "channels": channels,
+            "influence_model": influence,
+        }
+
+    mech_params = payload.get("mechanism_params") or {}
+    if lum_type == "upconversion":
+        y = simulate_upconversion_mechanism_trace(t_ms, mechanism=up_mech, params=mech_params)
+    elif lum_type == "downconversion":
+        y = simulate_downconversion_trace(t_ms, params=mech_params)
+    else:
+        y = simulate_downshifting_trace(t_ms, params=mech_params)
+
+    return {
+        "ok": True,
+        "flow": {"luminescence_type": lum_type, "mechanism": up_mech, "material_model": model_system},
+        "time_ms": t_ms.tolist(),
+        "channels": {
+            str(payload.get("emission", "477")): {
+                "intensity": y.tolist(),
+                "metrics": compute_trace_metrics(t_ms, y),
+            }
+        },
+    }
+
+
+def solve_luminescence_optimization_flow(payload):
+    """Separate optimization pipeline for non-ETUC/single-doped options."""
+    t_ms = _build_time_axis_from_payload(payload)
+    i_meas = _normalise_trace(payload.get("intensity", []))
+    if t_ms.size == 0 or i_meas.size == 0 or t_ms.size != i_meas.size:
+        raise ValueError("Optimization requires matching measured time and intensity arrays")
+
+    model_system = str(payload.get("material_model", "co_doped_yb_tm")).lower()
+    lum_type = str(payload.get("luminescence_type", "upconversion")).lower()
+    up_mech = str(payload.get("upconversion_mechanism", "etuc")).lower()
+    if model_system == "single_doped_tm":
+        lum_type = "downshifting"
+
+    # Single-doped Tm has a dedicated optimizer.
+    if model_system == "single_doped_tm":
+        result = fit_single_doped_tm_trace(t_ms, i_meas)
+        return {
+            "ok": True,
+            "flow": {"luminescence_type": lum_type, "mechanism": up_mech, "material_model": model_system},
+            "time_ms": t_ms.tolist(),
+            **result,
+        }
+
+    # Non-ETUC flows currently optimize a compact surrogate parameter set.
+    mech_params = payload.get("mechanism_params") or {}
+
+    if lum_type == "upconversion":
+        mech_name = up_mech
+        sim_fun = lambda tt, p: simulate_upconversion_mechanism_trace(tt, mechanism=mech_name, params=p)
+    elif lum_type == "downconversion":
+        sim_fun = lambda tt, p: simulate_downconversion_trace(tt, params=p)
+    else:
+        sim_fun = lambda tt, p: simulate_downshifting_trace(tt, params=p)
+
+    x0 = np.array([
+        float(mech_params.get("tau_ms", 1.5)),
+        float(mech_params.get("rise_ms", 0.08)),
+        float(mech_params.get("amp", 1.0)),
+    ], dtype=float)
+    lb = np.array([0.05, 0.001, 0.10], dtype=float)
+    ub = np.array([12.0, 2.000, 5.00], dtype=float)
+
+    def residuals(x):
+        p = {"tau_ms": float(x[0]), "rise_ms": float(x[1]), "amp": float(x[2])}
+        yy = sim_fun(t_ms, p)
+        return i_meas - yy
+
+    res = least_squares(residuals, x0=x0, bounds=(lb, ub), method="trf", loss="soft_l1", max_nfev=700)
+    x = res.x if res.success else x0
+    p_best = {"tau_ms": float(x[0]), "rise_ms": float(x[1]), "amp": float(x[2])}
+    y_fit = sim_fun(t_ms, p_best)
+    sse = float(np.sum((i_meas - y_fit) ** 2))
+    denom = float(np.sum((i_meas - np.mean(i_meas)) ** 2) + 1e-12)
+    r2 = 1.0 - sse / denom
+
+    return {
+        "ok": True,
+        "flow": {"luminescence_type": lum_type, "mechanism": up_mech, "material_model": model_system},
+        "time_ms": t_ms.tolist(),
+        "measured_intensity": i_meas.tolist(),
+        "fitted_intensity": y_fit.tolist(),
+        "r2": float(r2),
+        "params": p_best,
+        "timing_metrics": {
+            "time_unit": "ms",
+            "measured": compute_trace_metrics(t_ms, i_meas),
+            "fitted": compute_trace_metrics(t_ms, y_fit),
+        },
+        "diagnostics": {
+            "success": bool(res.success),
+            "nfev": int(getattr(res, "nfev", 0) or 0),
+            "cost": float(getattr(res, "cost", 0.0) or 0.0),
+            "message": str(getattr(res, "message", "")),
+            "note": "Surrogate non-ETUC optimizer; ETUC still uses full multilevel ODE optimizer.",
+        },
+    }
+
+
+# =============================================================================
+# SECTION 9 – FLASK ROUTES
+# =============================================================================
+
 @app.route("/export_csv", methods=["POST"])
 def export_csv():
     data = request.get_json()
@@ -653,9 +1594,37 @@ def index():
 
 @app.route("/fit", methods=["POST"])
 def fit():
+    fit_request_id = None
     try:
         t0 = time.perf_counter()
         payload = request.get_json() or {}
+        fit_request_id = str(payload.get("fit_request_id", "")).strip() or None
+        register_fit_request(fit_request_id)
+        init_fit_progress(fit_request_id)
+        update_fit_progress(fit_request_id, status="running", phase="prepare", message="Preparing fit input data.")
+
+        lum_type = str(payload.get("luminescence_type", "upconversion")).lower()
+        up_mech = str(payload.get("upconversion_mechanism", "etuc")).lower()
+        model_system = str(payload.get("material_model", "co_doped_yb_tm")).lower()
+        is_etuc_pipeline = (lum_type == "upconversion" and up_mech == "etuc" and model_system != "single_doped_tm")
+
+        # Non-ETUC paths are solved by a dedicated optimization flow.
+        if not is_etuc_pipeline:
+            update_fit_progress(
+                fit_request_id,
+                status="running",
+                phase="luminescence_dispatch",
+                message=f"Solving {lum_type}/{up_mech} with separated optimization flow.",
+            )
+            out = solve_luminescence_optimization_flow(payload)
+            update_fit_progress(
+                fit_request_id,
+                status="completed",
+                phase="completed",
+                message="Luminescence flow optimization completed.",
+            )
+            return jsonify(out)
+
         time_data = np.array(payload.get("time", []), dtype=float)
         intensity = np.array(payload.get("intensity", []), dtype=float)
         
@@ -687,52 +1656,336 @@ def fit():
         optimize_all_points = bool(payload.get("optimize_all_points", False))
         emission_value = str(payload.get("emission"))
         use_775_calibration = bool(payload.get("use_775_calibration", emission_value == "775"))
+        requested_target_r2 = float(payload.get("target_r2", 0.9999))
+        requested_adaptive_cycles = int(payload.get("adaptive_max_cycles", 4))
+        requested_peak_window_boost = float(payload.get("peak_window_boost", 1.0))
+        requested_early_rise_boost = float(payload.get("early_rise_boost", 1.0))
+        if ("doping_yb" not in payload) or ("doping_tm" not in payload):
+            return jsonify({
+                "error": "Missing required fields: doping_yb and doping_tm must be provided in the fit request payload.",
+                "error_code": "MISSING_DOPING",
+                "required_fields": ["doping_yb", "doping_tm"],
+            }), 400
+
+        try:
+            fit_doping_yb = float(payload.get("doping_yb"))
+            fit_doping_tm = float(payload.get("doping_tm"))
+        except (TypeError, ValueError):
+            return jsonify({
+                "error": "Invalid doping values: doping_yb and doping_tm must be numeric.",
+                "error_code": "INVALID_DOPING",
+            }), 400
+
+        if (not np.isfinite(fit_doping_yb)) or (not np.isfinite(fit_doping_tm)):
+            return jsonify({
+                "error": "Invalid doping values: doping_yb and doping_tm must be finite numbers.",
+                "error_code": "INVALID_DOPING",
+            }), 400
 
         lit_params = payload.get("lit_params", {})
+        if not isinstance(lit_params, dict):
+            lit_params = {}
+        else:
+            lit_params = dict(lit_params)
+
+        host_material = payload.get("host") or payload.get("host_material") or "NaYF4"
+        annealing_c = float(payload.get("anneal_temp", payload.get("annealing_c", 500.0)) or 500.0)
+        phonon_energy_cm = payload.get("phonon_energy_cm", payload.get("phonon_energy_nr", None))
+        if phonon_energy_cm is not None:
+            phonon_energy_cm = float(phonon_energy_cm)
+        host_mole_factor = float(payload.get("host_mole_factor", 5.0) or 5.0)
+
+        # Build influenced parameter prior from defaults + user overrides.
+        prior = _default_kinetic_params()
+        for name, val in lit_params.items():
+            if name in _SIM_PARAM_NAMES:
+                prior[_SIM_PARAM_NAMES.index(name)] = float(val)
+        prior_influenced, influence_model = _apply_host_annealing_influence(
+            prior,
+            host_material=host_material,
+            annealing_c=annealing_c,
+            phonon_energy_cm=phonon_energy_cm,
+            host_mole_factor=host_mole_factor,
+        )
+        lit_params = {
+            name: float(prior_influenced[i])
+            for i, name in enumerate(_SIM_PARAM_NAMES)
+        }
+
+        # Optional frontend-provided time-zero shift hint (ms).
+        # This seeds T_offset for optimization; it is still optimized (not fixed).
+        requested_time_offset_ms = float(payload.get("time_offset_ms", 0.0) or 0.0)
+        max_offset_hint = float(np.max(t_ms) * 0.3) if t_ms.size else 0.0
+        lit_params["T_offset"] = float(np.clip(requested_time_offset_ms, 0.0, max_offset_hint))
+        cancel_checker = (lambda: is_fit_cancelled(fit_request_id)) if fit_request_id else None
+
+        def progress_cb(info):
+            update_fit_progress(
+                fit_request_id,
+                status="running",
+                quality_attempt=requested_quality,
+                optimize_all_points=bool(optimize_all_points),
+                **(info or {}),
+            )
+
+        update_fit_progress(
+            fit_request_id,
+            status="running",
+            phase="run_fitting",
+            message=f"Running {requested_quality} fit (all_points={bool(optimize_all_points)}).",
+            target_r2=float(requested_target_r2),
+            adaptive_max_cycles=int(np.clip(requested_adaptive_cycles, 1, 20)),
+            peak_window_boost=float(np.clip(requested_peak_window_boost, 1.0, 2.5)),
+            early_rise_boost=float(np.clip(requested_early_rise_boost, 1.0, 2.5)),
+        )
 
         fit_y, best_params, sse, diag = run_fitting(
             t_ms, intensity, payload.get("pulse_width_us", 400),
             state_idx,
-            physics_state["doping_yb"],
-            physics_state["doping_tm"],
+            fit_doping_yb,
+            fit_doping_tm,
             requested_quality,
             optimize_all_points=optimize_all_points,
             lit_params=lit_params,
             use_775_calibration=use_775_calibration,
             emission_key=emission_value,
+            cancel_checker=cancel_checker,
+            target_r2=requested_target_r2,
+            adaptive_max_cycles=requested_adaptive_cycles,
+            peak_window_boost=requested_peak_window_boost,
+            early_rise_boost=requested_early_rise_boost,
+            progress_callback=progress_cb,
         )
 
-        # Optional "try better and keep only if better" step.
+        # Automatic best-fit search: sweep quality/all-points combinations and keep
+        # the candidate with the lowest SSE (highest R^2), while tracking all changes
+        # attempted for troubleshooting visibility.
         try_best_match = bool(payload.get("try_best_match", True))
-        quality_progression = {"fast": "balanced", "balanced": "accurate", "accurate": None}
-        attempted_quality = quality_progression.get(requested_quality)
-        if try_best_match and attempted_quality is not None:
-            fit_y_alt, best_params_alt, sse_alt, diag_alt = run_fitting(
+        target_r2 = float(payload.get("target_r2", 0.9999))
+        target_r2 = float(np.clip(target_r2, 0.0, 0.999995))
+        denom = np.sum((intensity - np.mean(intensity))**2) + 1e-12
+
+        quality_order = ["fast", "balanced", "accurate"]
+        requested_quality = requested_quality if requested_quality in quality_order else "fast"
+        requested_idx = quality_order.index(requested_quality)
+
+        candidate_plan = []
+        seen_plan = set()
+
+        def add_candidate(q, all_points, reason):
+            key = (q, bool(all_points))
+            if key in seen_plan:
+                return
+            seen_plan.add(key)
+            candidate_plan.append((q, bool(all_points), reason))
+
+        add_candidate(requested_quality, optimize_all_points, "requested")
+
+        if try_best_match:
+            for q in quality_order[requested_idx:]:
+                add_candidate(q, optimize_all_points, "quality_sweep")
+
+        # For very high R^2 targets, include full-point optimization attempts.
+        if target_r2 >= 0.9997 and not optimize_all_points:
+            base_qualities = quality_order[requested_idx:] if try_best_match else [requested_quality]
+            for q in base_qualities:
+                add_candidate(q, True, "all_points_for_high_target")
+
+        # 775 nm can need extra strict pass due to coupled feeder dynamics.
+        if emission_value == "775" and target_r2 >= 0.9999:
+            add_candidate("accurate", True, "775_strict_pass")
+
+        # 477 nm benefits from an extra strict all-points pass to improve peak timing and apex shape.
+        if emission_value == "477" and target_r2 >= 0.9999:
+            add_candidate("accurate", True, "477_strict_peak_pass")
+
+        # 362 nm often needs the strict all-points pass due to sharper apex and
+        # stronger sensitivity to upstream feeder dynamics.
+        if emission_value == "362" and target_r2 >= 0.9999:
+            add_candidate("accurate", True, "362_strict_peak_pass")
+
+        # First fit already computed above; use it as baseline.
+        current_r2 = 1.0 - sse / denom
+        best_fit = fit_y
+        best_params_all = best_params
+        best_sse = float(sse)
+        best_diag = dict(diag)
+        best_quality = requested_quality
+        best_all_points = bool(optimize_all_points)
+
+        attempt_logs = [{
+            "quality": requested_quality,
+            "optimize_all_points": bool(optimize_all_points),
+            "reason": "requested",
+            "r2": float(current_r2),
+            "sse": float(sse),
+            "accepted": True,
+            "from_cached_run": True,
+        }]
+
+        pulse_us = payload.get("pulse_width_us", 400)
+        for idx_attempt, (q, all_points, reason) in enumerate(candidate_plan, start=1):
+            if q == requested_quality and bool(all_points) == bool(optimize_all_points):
+                continue
+
+            update_fit_progress(
+                fit_request_id,
+                status="running",
+                phase="quality_sweep",
+                attempt_index=idx_attempt,
+                attempts_total=len(candidate_plan),
+                quality_attempt=q,
+                optimize_all_points=bool(all_points),
+                message=(
+                    f"Trying candidate {idx_attempt}/{len(candidate_plan)}: "
+                    f"quality={q}, all_points={bool(all_points)} ({reason})."
+                ),
+            )
+
+            def candidate_progress_cb(info, _q=q, _all=bool(all_points)):
+                update_fit_progress(
+                    fit_request_id,
+                    status="running",
+                    quality_attempt=_q,
+                    optimize_all_points=_all,
+                    **(info or {}),
+                )
+
+            fit_y_c, best_params_c, sse_c, diag_c = run_fitting(
                 t_ms,
                 intensity,
-                payload.get("pulse_width_us", 400),
+                pulse_us,
                 state_idx,
-                physics_state["doping_yb"],
-                physics_state["doping_tm"],
-                attempted_quality,
-                optimize_all_points=optimize_all_points,
+                fit_doping_yb,
+                fit_doping_tm,
+                q,
+                optimize_all_points=all_points,
                 lit_params=lit_params,
                 use_775_calibration=use_775_calibration,
                 emission_key=emission_value,
+                cancel_checker=cancel_checker,
+                target_r2=requested_target_r2,
+                adaptive_max_cycles=requested_adaptive_cycles,
+                peak_window_boost=requested_peak_window_boost,
+                early_rise_boost=requested_early_rise_boost,
+                progress_callback=candidate_progress_cb,
             )
-            if sse_alt < sse:
-                fit_y, best_params, sse, diag = fit_y_alt, best_params_alt, sse_alt, diag_alt
-                diag["selected_from"] = requested_quality
-                diag["selected_quality"] = attempted_quality
+
+            r2_c = 1.0 - (float(sse_c) / denom)
+            accepted = float(sse_c) < best_sse
+            attempt_logs.append({
+                "quality": q,
+                "optimize_all_points": bool(all_points),
+                "reason": reason,
+                "r2": float(r2_c),
+                "sse": float(sse_c),
+                "accepted": bool(accepted),
+                "from_cached_run": False,
+            })
+
+            if accepted:
+                best_fit = fit_y_c
+                best_params_all = best_params_c
+                best_sse = float(sse_c)
+                best_diag = dict(diag_c)
+                best_quality = q
+                best_all_points = bool(all_points)
+
+        fit_y, best_params, sse, diag = best_fit, best_params_all, best_sse, best_diag
+        achieved_r2 = 1.0 - (best_sse / denom)
+
+        diag["selected_from"] = requested_quality
+        diag["selected_quality"] = best_quality
+        diag["selected_optimize_all_points"] = bool(best_all_points)
+        diag["target_r2"] = float(target_r2)
+        diag["target_reached"] = bool(achieved_r2 >= target_r2)
+        diag["r2_gap_to_target"] = float(max(0.0, target_r2 - achieved_r2))
+        diag["best_fit_attempts"] = attempt_logs
+
+        # Troubleshooting block: includes every attempted strategy and why 0.9995
+        # may remain unreachable for a given trace/noise profile.
+        i_pk = int(np.argmax(intensity))
+        abs_err = np.abs(intensity - fit_y)
+        early_mae = float(np.mean(abs_err[:max(i_pk, 1)]))
+        peak_lo = max(0, i_pk - max(2, intensity.size // 12))
+        peak_hi = min(intensity.size, i_pk + max(2, intensity.size // 12))
+        peak_mae = float(np.mean(abs_err[peak_lo:peak_hi])) if peak_hi > peak_lo else 0.0
+        tail_mae = float(np.mean(abs_err[i_pk:])) if i_pk < intensity.size else 0.0
+        dominant_region = max(
+            [("early", early_mae), ("peak", peak_mae), ("tail", tail_mae)],
+            key=lambda x: x[1]
+        )[0]
+
+        attempted_change_lines = [
+            f"{a['quality']} | all_points={a['optimize_all_points']} | reason={a['reason']} | "
+            f"R2={a['r2']:.6f} | accepted={a['accepted']}"
+            for a in attempt_logs
+        ]
+
+        recommendations = []
+        error_code = "OK"
+        influence_info = influence_model if isinstance(influence_model, dict) else {}
+        combined_nr_factor = float(influence_info.get("combined_nr_factor", 1.0) or 1.0)
+
+        if achieved_r2 < target_r2:
+            error_code = "FIT-E00"
+            recommendations.append(
+                f"[FIT-E00] Target R2 {target_r2:.4f} not reached; best achieved {achieved_r2:.6f}. "
+                "This usually indicates experimental noise/normalization limits rather than optimizer failure."
+            )
+            if dominant_region == "early":
+                error_code = "FIT-E11"
+                recommendations.append("[FIT-E11] Dominant error region is early rise: verify pulse width and time-zero alignment (T_offset), then enable early-rise enhancement only if mismatch remains.")
+            elif dominant_region == "peak":
+                error_code = "FIT-E12"
+                recommendations.append("[FIT-E12] Dominant error region is peak window: tune local peak weight or check detector saturation near apex.")
             else:
-                diag["selected_from"] = requested_quality
-                diag["selected_quality"] = requested_quality
-                diag["tried_quality"] = attempted_quality
+                error_code = "FIT-E13"
+                recommendations.append("[FIT-E13] Dominant error region is tail: re-check baseline correction and long-time SNR.")
+
+            if combined_nr_factor > 1.30 or combined_nr_factor < 0.75:
+                error_code = "FIT-E31"
+                recommendations.append(
+                    "[FIT-E31] Host/annealing non-radiative scaling is far from nominal; revisit host mole factor, lattice phonon energy, and annealing temperature assumptions before over-tuning kinetics."
+                )
+
+        diag["troubleshooting"] = {
+            "summary": (
+                f"Best strategy selected: quality={best_quality}, all_points={best_all_points}, "
+                f"R2={achieved_r2:.6f}."
+            ),
+            "target_r2": float(target_r2),
+            "achieved_r2": float(achieved_r2),
+            "target_reached": bool(achieved_r2 >= target_r2),
+            "error_code": error_code,
+            "legacy_error_code": {
+                "FIT-E11": "FIT-E01",
+                "FIT-E12": "FIT-E02",
+                "FIT-E13": "FIT-E03",
+                "FIT-E21": "FIT-E04",
+            }.get(error_code, error_code),
+            "dominant_error_region": dominant_region,
+            "region_mae": {
+                "early": early_mae,
+                "peak": peak_mae,
+                "tail": tail_mae,
+            },
+            "changes_applied": attempted_change_lines,
+            "recommendations": recommendations,
+            "code_legend": {
+                "FIT-E00": "Global quality gap: target R2 not reached",
+                "FIT-E11": "Early-rise mismatch dominates",
+                "FIT-E12": "Peak-window mismatch dominates",
+                "FIT-E13": "Tail mismatch dominates",
+                "FIT-E21": "Timing mismatch despite acceptable R2",
+                "FIT-E31": "Host/annealing influence likely over-constraining fit",
+            },
+        }
 
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
         elapsed_min = elapsed_ms / 60000.0
 
-        r2 = 1 - (sse / np.sum((intensity - np.mean(intensity))**2))
+        r2 = 1.0 - (sse / denom)
 
         param_names = [
             "Rp", "Ay", "W1", "W2", "W3", "W4", "W5", "k21", "k35",
@@ -766,6 +2019,55 @@ def fit():
         fitted_metrics = compute_trace_metrics(t_ms, fit_y)
         param_roles = classify_parameter_roles(state_idx)
 
+        peak_time_abs_err = None
+        rise_time_abs_err = None
+        decay_tau_abs_err = None
+        if isinstance(measured_metrics, dict) and isinstance(fitted_metrics, dict):
+            if measured_metrics.get("peak_time") is not None and fitted_metrics.get("peak_time") is not None:
+                peak_time_abs_err = abs(float(fitted_metrics["peak_time"]) - float(measured_metrics["peak_time"]))
+            if measured_metrics.get("rise_time_10_90") is not None and fitted_metrics.get("rise_time_10_90") is not None:
+                rise_time_abs_err = abs(float(fitted_metrics["rise_time_10_90"]) - float(measured_metrics["rise_time_10_90"]))
+            if measured_metrics.get("decay_tau_1e") is not None and fitted_metrics.get("decay_tau_1e") is not None:
+                decay_tau_abs_err = abs(float(fitted_metrics["decay_tau_1e"]) - float(measured_metrics["decay_tau_1e"]))
+
+        rise_ratio_err = None if rise_time_abs_err is None else rise_time_abs_err / max(abs(float(measured_metrics.get("rise_time_10_90") or 0.0)), 1e-12)
+        decay_ratio_err = None if decay_tau_abs_err is None else decay_tau_abs_err / max(abs(float(measured_metrics.get("decay_tau_1e") or 0.0)), 1e-12)
+        peak_ratio_err = None if peak_time_abs_err is None else peak_time_abs_err / max(abs(float(measured_metrics.get("peak_time") or 0.0)), 1e-12)
+
+        timing_mismatch_warning = any([
+            rise_ratio_err is not None and rise_ratio_err > 0.20,
+            decay_ratio_err is not None and decay_ratio_err > 0.20,
+            peak_ratio_err is not None and peak_ratio_err > 0.15,
+        ])
+
+        troubleshooting_block = diag.get("troubleshooting") if isinstance(diag, dict) else None
+        if isinstance(troubleshooting_block, dict):
+            # Tighter fitting logic: decay tau difference >0.1 triggers rejection and improvement suggestions
+            decay_tau_threshold = 0.1
+            if decay_tau_abs_err is not None and decay_tau_abs_err > decay_tau_threshold:
+                troubleshooting_block["error_code"] = "FIT-E22"
+                troubleshooting_block["legacy_error_code"] = "FIT-E05"
+                troubleshooting_block["target_reached"] = False
+                troubleshooting_block.setdefault("recommendations", []).append(
+                    f"[FIT-E22] Decay tau difference ({decay_tau_abs_err:.3f}) exceeds threshold ({decay_tau_threshold}). Check baseline, pulse width, and timing alignment."
+                )
+            elif troubleshooting_block.get("target_reached") and timing_mismatch_warning:
+                troubleshooting_block["error_code"] = "FIT-E21"
+                troubleshooting_block["legacy_error_code"] = "FIT-E04"
+                troubleshooting_block.setdefault("recommendations", []).append(
+                    "[FIT-E21] Timing mismatch remains despite acceptable R²: prefer the solution with lower rise/peak timing error, especially for 345/362 multi-channel runs."
+                )
+            troubleshooting_block["timing_error_abs"] = {
+                "peak_time": peak_time_abs_err,
+                "rise_time_10_90": rise_time_abs_err,
+                "decay_tau_1e": decay_tau_abs_err,
+            }
+            troubleshooting_block["timing_error_ratio"] = {
+                "peak_time": peak_ratio_err,
+                "rise_time_10_90": rise_ratio_err,
+                "decay_tau_1e": decay_ratio_err,
+            }
+
         # Only expose parameters that appear directly in the selected emission's ODE equation.
         direct_params = set(param_roles["direct"])  # already includes T_offset
         selected_params = {k: v for k, v in params_all.items() if k in direct_params}
@@ -774,6 +2076,14 @@ def fit():
         # Extra guided parameters from 775 calibration stage (non-direct but informative for transfer).
         guided_names = [p for p in diag.get("guided_params", []) if p in params_all]
         guide_parameters = {k: params_all[k] for k in guided_names}
+
+        update_fit_progress(
+            fit_request_id,
+            status="completed",
+            phase="completed",
+            current_r2=float(r2),
+            message=f"Fit completed.",
+        )
 
         return jsonify({
             "r2": float(r2),
@@ -796,14 +2106,62 @@ def fit():
                 "measured": measured_metrics,
                 "fitted": fitted_metrics,
             },
+            "influence_model": influence_model,
             "diagnostics": {
                 **diag,
                 "elapsed_ms": float(elapsed_ms),
                 "elapsed_min": float(elapsed_min)
             },
         })
+    except FitCancelled:
+        update_fit_progress(fit_request_id, status="cancelled", phase="cancelled", message="Fit cancelled by user.")
+        return jsonify({
+            "cancelled": True,
+            "fit_request_id": fit_request_id,
+        }), 200
     except Exception:
+        update_fit_progress(fit_request_id, status="error", phase="error", message="Fit failed due to backend error.")
         return jsonify({"error": traceback.format_exc()}), 500
+    finally:
+        clear_fit_request(fit_request_id)
+        clear_fit_progress(fit_request_id)
+
+
+@app.route("/fit_progress", methods=["GET"])
+def fit_progress():
+    fit_request_id = str(request.args.get("fit_request_id", "")).strip()
+    if not fit_request_id:
+        return jsonify({"error": "Missing fit_request_id"}), 400
+
+    progress = get_fit_progress(fit_request_id)
+    if not progress:
+        return jsonify({"fit_request_id": fit_request_id, "found": False}), 200
+
+    # Only show progress info in terminal if fit is completed, cancelled, or error
+    status = progress.get("status", "")
+    if status in ("completed", "cancelled", "error"):
+        return jsonify({
+            "fit_request_id": fit_request_id,
+            "found": True,
+            **progress,
+        })
+    else:
+        return jsonify({
+            "fit_request_id": fit_request_id,
+            "found": True,
+            "status": status,
+        })
+
+
+@app.route("/cancel_fit", methods=["POST"])
+def cancel_fit():
+    payload = request.get_json() or {}
+    fit_request_id = str(payload.get("fit_request_id", "")).strip()
+    if not fit_request_id:
+        return jsonify({"error": "Missing fit_request_id"}), 400
+
+    cancel_fit_request(fit_request_id)
+    return jsonify({"ok": True, "fit_request_id": fit_request_id})
 
 @app.route("/api/configure_physics", methods=["POST"])
 def configure_physics():
@@ -817,6 +2175,411 @@ def configure_physics():
         "fit_quality": config.get("fit_quality", physics_state.get("fit_quality", "fast"))
     })
     return jsonify({"success": True})
+
+
+@app.route("/simulate_luminescence_flow", methods=["POST"])
+def simulate_luminescence_flow_route():
+    """Simulate selected luminescence pathway without optimization."""
+    try:
+        payload = request.get_json() or {}
+        out = solve_luminescence_simulation_flow(payload)
+        return jsonify(out)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/fit_luminescence_flow", methods=["POST"])
+def fit_luminescence_flow_route():
+    """Optimize selected luminescence pathway using its dedicated solver."""
+    try:
+        payload = request.get_json() or {}
+        out = solve_luminescence_optimization_flow(payload)
+        return jsonify(out)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+@app.route("/simulate_lifetime", methods=["POST"])
+def simulate_lifetime_route():
+    """
+    Forward ODE simulation — no fitting. Returns normalized intensity traces
+    per emission channel for a given sample composition and kinetic parameters.
+    """
+    try:
+        payload = request.get_json() or {}
+        yb_pct      = float(payload.get("yb_pct", 10.0))
+        tm_pct      = float(payload.get("tm_pct", 0.1))
+        emissions   = [str(e) for e in (payload.get("emissions") or ["775", "477", "645", "362", "345"])]
+        pulse_us    = float(payload.get("pulse_us", 100.0))
+        time_max_ms = float(payload.get("time_max_ms", 15.0))
+        num_points  = int(np.clip(int(payload.get("num_points", 500)), 100, 2000))
+        host_material = payload.get("host_material", "NaYF4")
+        annealing_c = float(payload.get("annealing_c", 500.0))
+        phonon_energy_cm = payload.get("phonon_energy_cm", None)
+        if phonon_energy_cm is not None:
+            phonon_energy_cm = float(phonon_energy_cm)
+        host_mole_factor = float(payload.get("host_mole_factor", 5.0))
+        yb_values = _parse_numeric_list(payload.get("yb_values"))
+        tm_values = _parse_numeric_list(payload.get("tm_values"))
+        sweep_mode = str(payload.get("sweep_mode", "paired")).lower()
+        user_params = payload.get("lit_params") or {}
+
+        params = _default_kinetic_params()
+        for name, val in user_params.items():
+            if name in _SIM_PARAM_NAMES:
+                params[_SIM_PARAM_NAMES.index(name)] = float(val)
+
+        t_arr  = np.linspace(0.0, time_max_ms, num_points)
+
+        do_sweep = (len(yb_values) > 1) or (len(tm_values) > 1)
+        if do_sweep:
+            if not yb_values:
+                yb_values = [yb_pct]
+            if not tm_values:
+                tm_values = [tm_pct]
+
+            pairs = []
+            if sweep_mode == "grid":
+                for yb_i in yb_values:
+                    for tm_i in tm_values:
+                        pairs.append((float(yb_i), float(tm_i)))
+            else:
+                n = max(len(yb_values), len(tm_values))
+                for i in range(n):
+                    yb_i = float(yb_values[i]) if i < len(yb_values) else float(yb_values[-1])
+                    tm_i = float(tm_values[i]) if i < len(tm_values) else float(tm_values[-1])
+                    pairs.append((yb_i, tm_i))
+
+            sweeps = []
+            for yb_i, tm_i in pairs:
+                traces_i = simulate_forward(
+                    yb_i,
+                    tm_i,
+                    emissions,
+                    pulse_us,
+                    t_arr,
+                    params,
+                    host_material=host_material,
+                    annealing_c=annealing_c,
+                    phonon_energy_cm=phonon_energy_cm,
+                    host_mole_factor=host_mole_factor,
+                )
+                channels_i = {}
+                for em, intensity_arr in traces_i.items():
+                    channels_i[em] = {
+                        "intensity": intensity_arr.tolist(),
+                        "metrics": compute_trace_metrics(t_arr, intensity_arr),
+                    }
+                sweeps.append({
+                    "label": f"Yb {yb_i:.3f}% / Tm {tm_i:.3f}%",
+                    "yb_pct": yb_i,
+                    "tm_pct": tm_i,
+                    "channels": channels_i,
+                })
+
+            _, influence = _apply_host_annealing_influence(
+                params,
+                host_material=host_material,
+                annealing_c=annealing_c,
+                phonon_energy_cm=phonon_energy_cm,
+                host_mole_factor=host_mole_factor,
+            )
+            return jsonify({
+                "ok": True,
+                "time": t_arr.tolist(),
+                "sweeps": sweeps,
+                "sweep_mode": sweep_mode,
+                "host_material": host_material,
+                "annealing_c": annealing_c,
+                "host_mole_factor": host_mole_factor,
+                "influence_model": influence,
+            })
+
+        traces = simulate_forward(
+            yb_pct,
+            tm_pct,
+            emissions,
+            pulse_us,
+            t_arr,
+            params,
+            host_material=host_material,
+            annealing_c=annealing_c,
+            phonon_energy_cm=phonon_energy_cm,
+            host_mole_factor=host_mole_factor,
+        )
+
+        channels = {}
+        for em, intensity_arr in traces.items():
+            metrics = compute_trace_metrics(t_arr, intensity_arr)
+            channels[em] = {
+                "intensity": intensity_arr.tolist(),
+                "metrics": metrics,
+            }
+
+        _, influence = _apply_host_annealing_influence(
+            params,
+            host_material=host_material,
+            annealing_c=annealing_c,
+            phonon_energy_cm=phonon_energy_cm,
+            host_mole_factor=host_mole_factor,
+        )
+        return jsonify({
+            "ok": True,
+            "time": t_arr.tolist(),
+            "channels": channels,
+            "yb_pct": yb_pct,
+            "tm_pct": tm_pct,
+            "host_material": host_material,
+            "annealing_c": annealing_c,
+            "host_mole_factor": host_mole_factor,
+            "influence_model": influence,
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/estimate_composition", methods=["POST"])
+def estimate_composition_route():
+    """
+    Estimate Yb% and Tm% from timing metrics (peak time + decay τ) and/or full
+    traces per channel, with all kinetic rate parameters held fixed.
+
+    Two input modes (can be mixed per channel):
+      1. Timing targets  – {emission: {peak_time_ms: X, decay_tau_ms: Y}}
+      2. Full traces     – {emission: {time: [...], intensity: [...]}}
+
+    The optimizer searches only the 2-D composition space (Yb%, Tm%) using
+    differential_evolution and returns the best estimate, channel-level quality,
+    and a ±15 % heuristic confidence range.
+    """
+    try:
+        payload      = request.get_json() or {}
+        channels_raw = payload.get("channels") or {}
+        user_params  = payload.get("lit_params") or {}
+        yb_range     = [float(v) for v in (payload.get("yb_range") or [1.0, 50.0])]
+        tm_range     = [float(v) for v in (payload.get("tm_range") or [0.01, 5.0])]
+        pulse_us     = float(payload.get("pulse_us", 100.0))
+        host_material = payload.get("host_material", "NaYF4")
+        annealing_c = float(payload.get("annealing_c", 500.0))
+        phonon_energy_cm = payload.get("phonon_energy_cm", None)
+        if phonon_energy_cm is not None:
+            phonon_energy_cm = float(phonon_energy_cm)
+        host_mole_factor = float(payload.get("host_mole_factor", 5.0))
+        optimize_kinetics = bool(payload.get("optimize_kinetics", False))
+        iterative_rounds = int(np.clip(int(payload.get("iterative_rounds", 1)), 1, 20))
+        de_maxiter = int(np.clip(int(payload.get("de_maxiter", 50)), 10, 500))
+        kinetics_scale_bounds = payload.get("kinetics_scale_bounds") or [0.7, 1.3]
+        scale_lo = float(np.clip(float(kinetics_scale_bounds[0]), 0.4, 1.0))
+        scale_hi = float(np.clip(float(kinetics_scale_bounds[1]), 1.0, 3.0))
+        if scale_hi <= scale_lo:
+            scale_lo, scale_hi = 0.7, 1.3
+
+        if not channels_raw:
+            return jsonify({"error": "No channel data provided"}), 400
+
+        params = _default_kinetic_params()
+        for name, val in user_params.items():
+            if name in _SIM_PARAM_NAMES:
+                params[_SIM_PARAM_NAMES.index(name)] = float(val)
+
+        candidate_kinetics = payload.get("kinetics_to_optimize") or ["W1", "W2", "W3", "k21", "k35", "Wcr", "Wb", "A50", "A60", "A61"]
+        kinetic_names = [
+            str(k) for k in candidate_kinetics
+            if str(k) in _SIM_PARAM_NAMES and str(k) not in {"T_offset", "Rp"}
+        ]
+        kinetic_names = list(dict.fromkeys(kinetic_names))
+        optimize_kinetics = optimize_kinetics and bool(kinetic_names)
+
+        # Parse per-channel reference data
+        target_metrics   = {}   # emission → {peak_time_ms, decay_tau_ms}
+        full_trace_data  = {}   # emission → {time: ndarray, intensity: ndarray}
+
+        for emission, ch_data in channels_raw.items():
+            em = str(emission)
+            if "time" in ch_data and "intensity" in ch_data:
+                t_ch = np.asarray(ch_data["time"],      dtype=float)
+                i_ch = np.asarray(ch_data["intensity"], dtype=float)
+                if t_ch.size >= 10 and i_ch.size == t_ch.size:
+                    mx = float(np.max(i_ch))
+                    if mx > 1e-12:
+                        i_ch /= mx
+                    full_trace_data[em] = {"time": t_ch, "intensity": i_ch}
+                    m = compute_trace_metrics(t_ch, i_ch)
+                    if m["peak_time"] is not None:
+                        target_metrics[em] = {
+                            "peak_time_ms": float(m["peak_time"]),
+                            "decay_tau_ms": float(m["decay_tau_1e"] or 0.0),
+                        }
+            elif "peak_time_ms" in ch_data or "decay_tau_ms" in ch_data:
+                target_metrics[em] = {
+                    "peak_time_ms": float(ch_data.get("peak_time_ms", 0.0)),
+                    "decay_tau_ms": float(ch_data.get("decay_tau_ms", 0.0)),
+                }
+
+        if not target_metrics and not full_trace_data:
+            return jsonify({"error": "No usable reference data found in channels"}), 400
+
+        emissions_list = sorted(set(list(target_metrics) + list(full_trace_data)),
+                                key=lambda e: ["775","477","645","362","452","345"].index(e)
+                                if e in ["775","477","645","362","452","345"] else 99)
+        has_full = bool(full_trace_data)
+
+        # Build simulation time axis from reference data or a sensible default
+        if full_trace_data:
+            ref_t = full_trace_data[next(iter(full_trace_data))]["time"]
+        else:
+            t_max = max(
+                (v["peak_time_ms"] + 8.0 * max(v["decay_tau_ms"], 0.5))
+                for v in target_metrics.values()
+                if v["peak_time_ms"] > 0
+            ) if target_metrics else 15.0
+            ref_t = np.linspace(0.0, float(t_max), 400)
+
+        _ch_weights = {"775": 1.0, "477": 1.0, "645": 0.8, "362": 1.0, "452": 0.8, "345": 0.9}
+
+        def _score(x):
+            yb, tm = float(x[0]), float(x[1])
+            p_trial = np.asarray(params, dtype=float).copy()
+            if optimize_kinetics:
+                for i, name in enumerate(kinetic_names):
+                    idx = _SIM_PARAM_NAMES.index(name)
+                    mult = float(x[2 + i])
+                    p_trial[idx] = params[idx] * mult
+
+            traces = simulate_forward(
+                yb,
+                tm,
+                emissions_list,
+                pulse_us,
+                ref_t,
+                p_trial,
+                host_material=host_material,
+                annealing_c=annealing_c,
+                phonon_energy_cm=phonon_energy_cm,
+                host_mole_factor=host_mole_factor,
+            )
+            total = 0.0
+            denom = 0.0
+            for em in emissions_list:
+                w   = _ch_weights.get(em, 1.0)
+                sim = traces.get(em, np.zeros(ref_t.size))
+                if has_full and em in full_trace_data:
+                    meas   = full_trace_data[em]["intensity"]
+                    t_meas = full_trace_data[em]["time"]
+                    sim_on = np.interp(t_meas, ref_t, sim)
+                    sse    = np.sum((meas - sim_on) ** 2)
+                    var    = np.sum((meas - np.mean(meas)) ** 2) + 1e-12
+                    total += w * (1.0 - max(-1.0, 1.0 - sse / var))
+                elif em in target_metrics:
+                    m        = compute_trace_metrics(ref_t, sim)
+                    ref      = target_metrics[em]
+                    pt_err   = ((m["peak_time"] or 0.0) - ref["peak_time_ms"])  / (abs(ref["peak_time_ms"]) + 1e-6)
+                    dt_err   = ((m["decay_tau_1e"] or 0.0) - ref["decay_tau_ms"]) / (abs(ref["decay_tau_ms"]) + 1e-6)
+                    total   += w * (pt_err ** 2 + dt_err ** 2)
+                denom += w
+            return total / (denom + 1e-12)
+
+        bounds_de = [
+            (max(0.5,  yb_range[0]), min(50.0, yb_range[1])),
+            (max(0.01, tm_range[0]), min(5.0,  tm_range[1])),
+        ]
+        if optimize_kinetics:
+            bounds_de.extend([(scale_lo, scale_hi)] * len(kinetic_names))
+
+        best_result = None
+        for round_idx in range(iterative_rounds):
+            de_result = differential_evolution(
+                _score,
+                bounds=bounds_de,
+                maxiter=de_maxiter,
+                popsize=14,
+                seed=42 + round_idx,
+                tol=1e-4,
+                polish=True,
+            )
+            if (best_result is None) or (float(de_result.fun) < float(best_result.fun)):
+                best_result = de_result
+
+        de_result = best_result
+        best_yb = float(de_result.x[0])
+        best_tm = float(de_result.x[1])
+
+        p_best = np.asarray(params, dtype=float).copy()
+        optimized_lit_params = {}
+        if optimize_kinetics:
+            for i, name in enumerate(kinetic_names):
+                idx = _SIM_PARAM_NAMES.index(name)
+                scale = float(de_result.x[2 + i])
+                p_best[idx] = params[idx] * scale
+                optimized_lit_params[name] = float(p_best[idx])
+
+        best_traces = simulate_forward(
+            best_yb,
+            best_tm,
+            emissions_list,
+            pulse_us,
+            ref_t,
+            p_best,
+            host_material=host_material,
+            annealing_c=annealing_c,
+            phonon_energy_cm=phonon_energy_cm,
+            host_mole_factor=host_mole_factor,
+        )
+        channel_quality = {}
+        for em in emissions_list:
+            sim = best_traces.get(em, np.zeros(ref_t.size))
+            if has_full and em in full_trace_data:
+                meas   = full_trace_data[em]["intensity"]
+                t_meas = full_trace_data[em]["time"]
+                sim_on = np.interp(t_meas, ref_t, sim)
+                sse    = float(np.sum((meas - sim_on) ** 2))
+                var    = float(np.sum((meas - np.mean(meas)) ** 2)) + 1e-12
+                channel_quality[em] = {"r2": round(max(-1.0, 1.0 - sse / var), 5)}
+            elif em in target_metrics:
+                m   = compute_trace_metrics(ref_t, sim)
+                ref = target_metrics[em]
+                channel_quality[em] = {
+                    "simulated_peak_time_ms": round(m["peak_time"] or 0.0, 4),
+                    "target_peak_time_ms":    round(ref["peak_time_ms"], 4),
+                    "simulated_decay_tau_ms": round(m["decay_tau_1e"] or 0.0, 4),
+                    "target_decay_tau_ms":    round(ref["decay_tau_ms"], 4),
+                }
+
+        _, influence = _apply_host_annealing_influence(
+            p_best,
+            host_material=host_material,
+            annealing_c=annealing_c,
+            phonon_energy_cm=phonon_energy_cm,
+            host_mole_factor=host_mole_factor,
+        )
+        return jsonify({
+            "ok":          True,
+            "best_yb_pct": round(best_yb, 2),
+            "best_tm_pct": round(best_tm, 3),
+            "score":       float(de_result.fun),
+            "converged":   bool(de_result.success),
+            "host_material": host_material,
+            "annealing_c": annealing_c,
+            "host_mole_factor": host_mole_factor,
+            "kinetics_optimized": bool(optimize_kinetics),
+            "kinetics_names": kinetic_names,
+            "iterative_rounds": iterative_rounds,
+            "de_maxiter": de_maxiter,
+            "optimized_lit_params": optimized_lit_params,
+            "influence_model": influence,
+            "channel_quality": channel_quality,
+            "confidence": {
+                "yb_range": (round(max(0.5,  best_yb * 0.85), 2), round(min(50.0, best_yb * 1.15), 2)),
+                "tm_range": (round(max(0.01, best_tm * 0.85), 3), round(min(5.0,  best_tm * 1.15), 3)),
+                "note": "Heuristic ±15% range. Narrow bounds, add more channels, and optionally optimize kinetics for tighter estimates.",
+            },
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+# =============================================================================
+# SECTION 10 – APP ENTRY POINT
+# =============================================================================
 
 if __name__ == "__main__":
     # Ensure app.run uses 0.0.0.0 to allow access from local network if needed
