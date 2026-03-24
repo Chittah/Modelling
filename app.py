@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request, send_from_directory
 import numpy as np
 import os
+import json
 import traceback
 import time
 import threading
@@ -634,7 +635,23 @@ def simulate_downshifting_trace(time_ms, params=None):
 # SECTION 6 – MAIN ODE FITTING ENGINE  (run_fitting)
 # =============================================================================
 
-def run_fitting(time_ms, intensity, pulse_us, state_idx, doping_yb, doping_tm, fit_quality="fast", optimize_all_points=False, lit_params=None, use_775_calibration=False, emission_key=None, cancel_checker=None, target_r2=0.999, adaptive_max_cycles=4, peak_window_boost=1.0, early_rise_boost=1.0, progress_callback=None):
+def run_fitting(time_ms, intensity, pulse_us,
+                 state_idx, 
+                 doping_yb, 
+                 doping_tm, 
+                 fit_quality="fast", 
+                 optimize_all_points=False, 
+                 lit_params=None, 
+                 use_775_calibration=False, 
+                 emission_key=None, cancel_checker=None, 
+                 target_r2=0.999, 
+                 adaptive_max_cycles=4, 
+                 peak_window_boost=1.0, 
+                 early_rise_boost=1.0, 
+                 peak_tolerance=0.01, 
+                 rise_tolerance=0.01, 
+                 decay_tolerance=0.01, 
+                 progress_callback=None):
     p_ms_nominal = max(float(pulse_us) / 1000.0, 1e-6)
     y0 = [doping_yb/100, 0, doping_tm/100, 0, 0, 0, 0, 0, 0, 0, 0] #initial conditions set from doping conc
     emission_key_s = str(emission_key)
@@ -1378,6 +1395,40 @@ def _normalise_trace(y):
         yy = yy / mx
     return yy
 
+# Store emission weights in memory
+emission_weights = {
+    '1800': {'peak': 1.27, 'early': 1.3, 'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}},
+    '1230': {'peak': 1.27, 'early': 1.3, 'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}},
+    '775':  {'peak': 1.27, 'early': 1.3, 'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}},
+    '645':  {'peak': 1.27, 'early': 1.3, 'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}},
+    '477':  {'peak': 1.27, 'early': 1.3, 'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}},
+    '452':  {'peak': 1.27, 'early': 1.3, 'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}},
+    '362':  {'peak': 1.27, 'early': 1.3, 'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}},
+    '345':  {'peak': 1.27, 'early': 1.3, 'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}},
+}
+# File to persist weights
+WEIGHTS_FILE = 'emission_weights.json'
+
+def load_weights():
+    """Load saved weights from file"""
+    global emission_weights
+    if os.path.exists(WEIGHTS_FILE):
+        try:
+            with open(WEIGHTS_FILE, 'r') as f:
+                saved = json.load(f)
+                emission_weights.update(saved)
+                print(f"✅ Loaded emission weights from {WEIGHTS_FILE}")
+        except Exception as e:
+            print(f"⚠️ Could not load weights: {e}")
+
+def save_weights():
+    """Save current weights to file"""
+    try:
+        with open(WEIGHTS_FILE, 'w') as f:
+            json.dump(emission_weights, f, indent=2)
+        print(f"💾 Saved emission weights to {WEIGHTS_FILE}")
+    except Exception as e:
+        print(f"⚠️ Could not save weights: {e}")
 
 # =============================================================================
 # SECTION 8 – LUMINESCENCE FLOW SOLVERS
@@ -1660,6 +1711,34 @@ def fit():
         requested_adaptive_cycles = int(payload.get("adaptive_max_cycles", 4))
         requested_peak_window_boost = float(payload.get("peak_window_boost", 1.0))
         requested_early_rise_boost = float(payload.get("early_rise_boost", 1.0))
+        # Get user-saved weights for this emission from emission_weights dict
+        user_weights = emission_weights.get(emission_value, {})
+        user_peak_weight = user_weights.get('peak')
+        user_early_weight = user_weights.get('early')
+
+
+        # Override the requested boost values with user-saved weights
+        if user_peak_weight is not None:
+            requested_peak_window_boost = float(np.clip(user_peak_weight, 1.0, 10.0))
+            print(f"✅ Using saved peak weight: {requested_peak_window_boost} for {emission_value}")
+        else:
+            requested_peak_window_boost = float(payload.get("peak_window_boost", 1.0))
+
+        if user_early_weight is not None:
+            requested_early_rise_boost = float(np.clip(user_early_weight, 1.0, 10.0))
+            print(f"✅ Using saved early weight: {requested_early_rise_boost} for {emission_value}")
+        else:
+            requested_early_rise_boost = float(payload.get("early_rise_boost", 1.0))
+
+        # Also store tolerances for use in diagnostics if needed
+        user_tolerances = user_weights.get('tolerances', {})
+       
+        peak_tolerance = user_tolerances.get('peak', 0.01)
+        rise_tolerance = user_tolerances.get('rise', 0.01)
+        decay_tolerance = user_tolerances.get('decay', 0.01)
+
+        print(f"Using tolerances for {emission_value}: peak={peak_tolerance}, rise={rise_tolerance}, decay={decay_tolerance}")
+
         if ("doping_yb" not in payload) or ("doping_tm" not in payload):
             return jsonify({
                 "error": "Missing required fields: doping_yb and doping_tm must be provided in the fit request payload.",
@@ -1754,6 +1833,9 @@ def fit():
             adaptive_max_cycles=requested_adaptive_cycles,
             peak_window_boost=requested_peak_window_boost,
             early_rise_boost=requested_early_rise_boost,
+            peak_tolerance=peak_tolerance,
+            rise_tolerance=rise_tolerance,
+            decay_tolerance=decay_tolerance,
             progress_callback=progress_cb,
         )
 
@@ -2575,6 +2657,108 @@ def estimate_composition_route():
         })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
+@app.route('/updateEmissionWeights', methods=['POST'])
+def update_emission_weights():
+    """
+    Update weights and error tolerances for a specific emission.
+    """
+    try:
+        data = request.get_json()
+        
+        emission = data.get('emission')
+        peak_weight = data.get('peakWeight')
+        early_weight = data.get('earlyWeight')
+        error_tolerance = data.get('errorTolerance', {})
+        
+        # Validate
+        if not emission:
+            return jsonify({'error': 'Emission not specified'}), 400
+        
+        if emission not in emission_weights:
+             emission_weights[emission] = {
+                'peak': 1.27,
+                'early': 1.3,
+                'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}
+            }
+        # Update weights
+        if peak_weight is not None:
+            emission_weights[emission]['peak'] = float(peak_weight)
+        
+        if early_weight is not None:
+            emission_weights[emission]['early'] = float(early_weight)
+        
+        # Update error tolerances
+        if error_tolerance:
+            if 'peak' in error_tolerance:
+                emission_weights[emission]['tolerances']['peak'] = float(error_tolerance['peak'])
+            if 'decay' in error_tolerance:
+                emission_weights[emission]['tolerances']['decay'] = float(error_tolerance['decay'])
+            if 'rise' in error_tolerance:
+                emission_weights[emission]['tolerances']['rise'] = float(error_tolerance['rise'])
+        
+        # Save to file
+        save_weights()
+
+        print(f"✅ Updated weights for {emission}: peak={emission_weights[emission]['peak']}, early={emission_weights[emission]['early']}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Updated weights for {emission} nm',
+            'weights': emission_weights[emission]
+        })
+        
+    except Exception as e:
+        print(f"Error in update_emission_weights: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/getEmissionWeights', methods=['GET'])
+def get_emission_weights():
+    """
+    Get current weights for all emissions or specific one.
+    """
+    try:
+        emission = request.args.get('emission')
+        
+        if emission:
+            if emission in emission_weights:
+                return jsonify({
+                    'emission': emission,
+                    'weights': emission_weights[emission]
+                })
+            else:
+               return jsonify({
+                    'emission': emission,
+                    'weights': {
+                        'peak': 1.27,
+                        'early': 1.3,
+                        'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}
+                    }
+                })
+        else:
+            return jsonify(emission_weights)
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/resetEmissionWeights', methods=['POST'])
+def reset_emission_weights():
+    """Reset weights to default values for all emissions"""
+    global emission_weights
+    
+    for em in emission_weights:
+        emission_weights[em] = {
+            'peak': 1.27,
+            'early': 1.3,
+            'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}
+        }
+    
+    save_weights()
+    
+    return jsonify({'success': True, 'message': 'All weights reset to defaults'})
+load_weights()
+
 
 
 # =============================================================================

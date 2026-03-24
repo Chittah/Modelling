@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TM Lifetime Analyzer - Interactive Fitter</title>
+    <title>Tm Lifetime Analyzer - Interactive Fitter</title>
     <style>
 
         * {
@@ -641,15 +641,15 @@
         }
 
         .summary-panel {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
             background: white;
             border-radius: 8px;
             padding: 15px;
             margin-top: 15px;
             border-left: 4px solid #667eea;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
 
         .summary-panel h4 {
@@ -680,6 +680,71 @@
             float: right;
         }
         
+        .evidence-panel {
+            margin-top: 20px;
+            border: 1px solid #2c2c2c;
+            border-radius: 8px;
+            background: #e5e0e0;
+            color: #eee;
+            font-family: monospace;
+            font-size: 13px;
+        }
+
+        .evidence-header {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #333;
+            font-weight: bold;
+        }
+
+        .evidence-header button {
+            background: #333;
+            color: #fff;
+            border: none;
+            padding: 4px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .evidence-grid {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .evidence-row {
+            display: grid;
+            grid-template-columns: 60px 90px 120px 120px 120px 120px;
+            padding: 6px 10px;
+            border-bottom: 1px solid #222;
+        }
+
+        .evidence-row:nth-child(even) {
+            background: #151515;
+        }
+
+        .col {
+            text-align: left;
+        }
+
+        /* STATUS COLORS */
+        .ok {
+            color: #4caf50;
+        }
+
+        .warn {
+            color: #ff9800;
+        }
+
+        .bad {
+            color: #f44336;
+        }
+
+        .evidence-empty {
+            padding: 10px;
+            color: #888;
+        }
         /* Development Card Zoom Styles */
         .dev-card {
             transition: all 0.3s ease;
@@ -695,7 +760,7 @@
             height: 90vh;
             z-index: 10000;
             background: white;
-            box-shadow: 0 25px 50px -12px rgba(16, 4, 237, 0.5);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
             border-radius: 16px;
             overflow: auto;
         }
@@ -725,10 +790,10 @@
             width: 90vw !important;
             height: 90vh !important;
             z-index: 10001 !important;
-            background: rgba(252, 250, 250, 0.959) !important;
+            background: rgba(0, 0, 0, 0.9) !important;
             cursor: zoom-out !important;
             border-radius: 12px !important;
-            box-shadow: 0 0 50px rgba(226, 5, 226, 0.5) !important;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.5) !important;
         }
 
         .dev-card-wrapper.zoomed img {
@@ -743,7 +808,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(89, 33, 43, 0.95);
+            background-color: rgba(76, 7, 250, 0.95);
             z-index: 10000;
             cursor: pointer;
             justify-content: center;
@@ -770,7 +835,7 @@
             position: absolute;
             top: 20px;
             right: 20px;
-            background: rgba(28, 191, 223, 0.2);
+            background: rgba(255, 255, 255, 0.2);
             color: white;
             border: none;
             border-radius: 50%;
@@ -795,7 +860,7 @@
         .modal-zoom-btn {
             position: absolute;
             bottom: 20px;
-            background: rgba(28, 191, 223, 0.2);
+            background: rgba(255, 255, 255, 0.2);
             color: white;
             border: none;
             border-radius: 8px;
@@ -827,7 +892,7 @@
             position: absolute;
             bottom: 20px;
             right: 200px;
-            background: rgba(28, 191, 223, 0.2);
+            background: rgba(255, 255, 255, 0.2);
             color: white;
             border: none;
             border-radius: 8px;
@@ -840,9 +905,9 @@
         }
 
         .modal-reset-btn:hover {
-            background: rgba(28, 191, 223, 0.4);
+            background: rgba(255, 255, 255, 0.4);
         }
-
+                
     </style>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
@@ -864,23 +929,23 @@
                     <h3 style="margin: 0; font-size: 16px; color: #ecf0f1;">🔬 TM Analyzer</h3>
                 </div>
                 <nav style="padding: 10px 0;">
-                    <a href="#" class="menu-item active" onclick="showView('home'); return false;" data-view="home" style="display: flex; align-items: center; gap: 12px; padding: 15px 20px; color: white; text-decoration: none; transition: all 0.3s; border-left: 4px solid #3498db; background: rgba(52, 152, 219, 0.2);">
+                    <a href="#" class="menu-item active" onclick="window.showView('home'); return false;" data-view="home" style="display: flex; align-items: center; gap: 12px; padding: 15px 20px; color: white; text-decoration: none; transition: all 0.3s; border-left: 4px solid #3498db; background: rgba(52, 152, 219, 0.2);">
                         <span style="font-size: 20px;">🏠</span>
                         <span style="font-size: 14px; font-weight: 500;">Home</span>
                     </a>
-                    <a href="#" class="menu-item" onclick="showView('analyzer'); return false;" data-view="analyzer" style="display: flex; align-items: center; gap: 12px; padding: 15px 20px; color: #bdc3c7; text-decoration: none; transition: all 0.3s; border-left: 4px solid transparent;">
+                    <a href="#" class="menu-item" onclick="window.showView('analyzer'); return false;" data-view="analyzer" style="display: flex; align-items: center; gap: 12px; padding: 15px 20px; color: #bdc3c7; text-decoration: none; transition: all 0.3s; border-left: 4px solid transparent;">
                         <span style="font-size: 20px;">🔬</span>
                         <span style="font-size: 14px; font-weight: 500;">Lifetime Analyzer</span>
                     </a>
-                    <a href="#" class="menu-item" onclick="showView('development'); return false;" data-view="development" style="display: flex; align-items: center; gap: 12px; padding: 15px 20px; color: #bdc3c7; text-decoration: none; transition: all 0.3s; border-left: 4px solid transparent;">
+                    <a href="#" class="menu-item" onclick="window.showView('development'); return false;" data-view="development" style="display: flex; align-items: center; gap: 12px; padding: 15px 20px; color: #bdc3c7; text-decoration: none; transition: all 0.3s; border-left: 4px solid transparent;">
                         <span style="font-size: 20px;">🧪</span>
                         <span style="font-size: 14px; font-weight: 500;">Development Fitting</span>
                     </a>
-                    <a href="#" class="menu-item" onclick="showView('simulator'); return false;" data-view="simulator" style="display: flex; align-items: center; gap: 12px; padding: 15px 20px; color: #bdc3c7; text-decoration: none; transition: all 0.3s; border-left: 4px solid transparent;">
+                    <a href="#" class="menu-item" onclick="window.showView('simulator'); return false;" data-view="simulator" style="display: flex; align-items: center; gap: 12px; padding: 15px 20px; color: #bdc3c7; text-decoration: none; transition: all 0.3s; border-left: 4px solid transparent;">
                         <span style="font-size: 20px;">📊</span>
                         <span style="font-size: 14px; font-weight: 500;">Lifetime Generator</span>
                     </a>
-                    <a href="#" class="menu-item" onclick="showView('help'); return false;" data-view="help" style="display: flex; align-items: center; gap: 12px; padding: 15px 20px; color: #bdc3c7; text-decoration: none; transition: all 0.3s; border-left: 4px solid transparent;">
+                    <a href="#" class="menu-item" onclick="window.showView('help'); return false;" data-view="help" style="display: flex; align-items: center; gap: 12px; padding: 15px 20px; color: #bdc3c7; text-decoration: none; transition: all 0.3s; border-left: 4px solid transparent;">
                         <span style="font-size: 20px;">❓</span>
                         <span style="font-size: 14px; font-weight: 500;">Help & Troubleshooting</span>
                     </a>
@@ -1010,7 +1075,6 @@
                         <div>
                             <h1 style="margin:0; color:#1f2937;">🧪 Development Fitting</h1>
                             <p style="margin:6px 0 0; color:#6b7280; font-size:14px;">Per-emission evidence snapshots, known failure modes, and recommended remedies.</p>
-                            <p style="margin:6px 0 0; color:#6b7280; font-size:14px;">click to zoom in and out.</p>
                         </div>
                         <div style="min-width:260px;">
                             <label style="display:block; font-size:12px; font-weight:700; color:#374151; margin-bottom:6px;">Select Emission</label>
@@ -1087,6 +1151,8 @@
                             </button>
                         </div>
                     </div>
+
+
                     <!-- Luminescence Decision Flow -->
                     <div style="padding: 10px 15px; background: #f8fafc; border-bottom: 1px solid #dbeafe;">
                         <div style="display:flex; gap:12px; align-items:end; flex-wrap:wrap;">
@@ -1122,7 +1188,7 @@
                         </div>
 
                         <div id="etucFlowHint" style="margin-top:8px; padding:8px 10px; border-left:3px solid #10b981; background:#ecfdf5; font-size:10px; color:#065f46; border-radius:4px;">
-                            ETUC selected: current full ODE fitting pipeline will be used.
+                            ETUC selected: current full ODE fitting pipeline (as planned) will be used.
                         </div>
 
                         <div id="nonEtucFlowPanel" style="display:none;"><!-- Parameters moved to Mechanism Parameters tab --></div>
@@ -1137,6 +1203,7 @@
                             <button onclick="showRibbonTab('sample')" id="ribbonTabSample" class="ribbon-tab" style="padding: 8px 20px; background: transparent; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-weight: 600; font-size: 12px; color: #6b7280;">⚗️ Sample Composition</button>
                             <button onclick="showRibbonTab('physics')" id="ribbonTabPhysics" class="ribbon-tab" style="padding: 8px 20px; background: transparent; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-weight: 600; font-size: 12px; color: #6b7280;">⚛️ Physics Parameters</button>
                             <button onclick="showRibbonTab('advanced')" id="ribbonTabAdvanced" class="ribbon-tab" style="padding: 8px 20px; background: transparent; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-weight: 600; font-size: 12px; color: #6b7280;">⚙️ Advanced Settings</button>
+                            <button onclick="showRibbonTab('emissionSummary')" id="ribbonTabEmissionSummary" class="ribbon-tab" style="padding: 8px 20px; background: transparent; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-weight: 600; font-size: 12px; color: #6b7280;">📊 Plots Summary</button>
                             <button onclick="showRibbonTab('mechanism')" id="ribbonTabMechanism" class="ribbon-tab" style="display:none; padding: 8px 20px; background: transparent; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-weight: 600; font-size: 12px; color: #6b7280;">🔧 Mechanism Parameters</button>
                             <button onclick="showRibbonTab('runsettings')" id="ribbonTabRunsettings" class="ribbon-tab" style="display:none; padding: 8px 20px; background: transparent; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-weight: 600; font-size: 12px; color: #6b7280;">▶ Run Settings</button>
                         </div>
@@ -1545,7 +1612,7 @@
                                 <strong>ℹ️ Influences optimization:</strong> Runtime mode controls fit depth and speed. Literature defaults are reused for non-optimized parameters.
                             </div>
 
-                                                        <div style="margin-top: 8px; padding: 8px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px;">
+                            <div style="margin-top: 8px; padding: 8px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px;">
                                 <div style="font-size: 11px; font-weight: 700; color: #1e293b; margin-bottom: 6px;">Live Adaptive Loop Record</div>
                                 <div id="fitLiveLog" style="overflow-y: auto; font-family: 'Courier New', monospace; font-size: 10px; color: #334155; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 6px;">
                                     No fit run yet.
@@ -1636,11 +1703,13 @@
 
                                 </div>
 
-                                <!-- APPLY BUTTON -->
-                                <button id="applyWeightsBtn" style="margin-top: 12px; padding: 6px 12px;">
-                                    Apply
+                                <!-- SAVE BUTTON -->
+                                <button id="saveWeightsBtn" style="margin-top: 12px; padding: 6px 12px;">
+                                    Save
                                 </button>
+
                             </div>
+
                             <!-- Literature / Fixed Parameter Values -->
                             <div style="margin-top: 14px; border-top: 1px solid #e5e7eb; padding-top: 12px;">
                                 <div style="font-size: 11px; font-weight: bold; color: #374151; margin-bottom: 8px;">📚 Fixed Parameter Defaults (Literature Values)</div>
@@ -1669,6 +1738,20 @@
                                 </div>
                             </div>
                         </div>
+                        <!-- PLOTS SUMMARY TAB -->  
+                        <div id="ribbonContentEmissionSummary" class="ribbon-content" style="display: none;">
+                            <div style="display: flex; gap: 15px; align-items: start; flex-wrap: wrap;">
+                                <div style="flex: 1 1 100%;margin-top:15px">
+                                    <div class = "evidence-panel">
+                                        <div class="evidence-header">
+                                            <span> Fitting Evidence Monitor </span>
+                                            <button onclick="window.developmentFittingDB = []; renderEvidence();"> Clear </button>
+                                        </div>
+                                        <div id="evidenceGrid" class="evidence-grid"></div>
+                                    </div>
+                                </div>      
+                            </div>
+                        </div> 
 
                         <!-- MECHANISM PARAMETERS TAB (non-ETUC modes) -->
                         <div id="ribbonContentMechanism" class="ribbon-content" style="display: none;">
@@ -2262,23 +2345,23 @@
                         <h2 style="color: #667eea; margin-bottom: 15px;">📄 Data File Format</h2>
                         <h3 style="color: #555; font-size: 16px; margin-top: 20px;">CSV Format:</h3>
                         <pre style="background: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto;">Time (ns), Intensity (counts)
-0.0, 1250.5
-0.1, 1245.8
-0.2, 1238.2
-...</pre>
+                                0.0, 1250.5
+                                0.1, 1245.8
+                                0.2, 1238.2
+                                ...</pre>
                         <p style="color: #666; margin-top: 10px;">✅ Supports: CSV, TSV, space-separated<br>✅ Optional metadata lines at the top (will be auto-detected)</p>
                         
                         <h3 style="color: #555; font-size: 16px; margin-top: 20px;">JSON Format:</h3>
                         <pre style="background: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto;">{
-  "data": {
-    "time": [0.0, 0.1, 0.2, ...],
-    "intensity": [1250.5, 1245.8, 1238.2, ...]
-  },
-  "metadata": {
-    "doping_yb": 10.0,
-    "doping_tm": 0.5
-  }
-}</pre>
+                                "data": {
+                                    "time": [0.0, 0.1, 0.2, ...],
+                                    "intensity": [1250.5, 1245.8, 1238.2, ...]
+                                },
+                                "metadata": {
+                                    "doping_yb": 10.0,
+                                    "doping_tm": 0.5
+                                }
+                                }</pre>
                     </div>
                     
                     <!-- Installation Guide -->
@@ -2378,25 +2461,25 @@
                                 <li><strong>FIT-E21</strong> (legacy FIT-E04): R² looks acceptable, but timing alignment is still poor (rise/peak/decay timing mismatch)</li>
                                 <li><strong>FIT-E31</strong>: Host/annealing influence likely dominates; revisit host mole factor, lattice energy, and annealing assumptions.</li>
                             </ul>
-                             <ul style="margin-bottom:8px;">
-                                <li><b>Peak weight</b>, <b>early-rise weight</b>, and <b>adaptive cycles</b> are tuned during retries and shown in the live log. Higher values make the fit prioritize these features.</li>
-                                <li>Differences are treated as absolute values. On a log scale, even small differences are visible and important, especially if they persist across retries.</li>
-                                <li>Large values indicate substantial mismatch; small values may still be important if the fit is sensitive or the data is noisy.</li>
-                            </ul>
-                            <ul style="margin-bottom:8px;">
-                                <li><b>Proxy fitting for missing channel:</b> If a mandatory channel (e.g., 362 nm) does not have a file or folder, the workflow uses a proxy approach: it fits the available channel (e.g., 477 nm) and attempts to generate a fit for the missing channel using the available data as a proxy. This is indicated by log messages such as <b>proxy 477→362</b>.</li>
-                                <li>In proxy fitting, <b>experimental</b> refers to the measured data from the proxy channel (e.g., 477 nm), not the missing channel. All timing metrics, intensity, and error calculations are based on this proxy data.</li>
-                                <li>The proxy fit uses the best available data to estimate parameters for the missing channel. Fit quality and troubleshooting will reflect that a proxy was used, and recommendations may be shown for improving proxy accuracy.</li>
-                                <li>If the proxy fit does not meet solved criteria, retries and fallback logic are applied as usual, but the result is limited by the proxy data. Manual review is recommended for proxy fits.</li>
-                            </ul>
-                            <ul style="margin-bottom:6px;">
-                                <li><b>Retry cap:</b> The number of auto-retries is capped at 12 for safety and performance.</li>
-                                <li><b>Early stop:</b> Retries stop early if the fit is solved or if the same fitting result is obtained again (no further progress).</li>
-                                <li><b>What changes per retry:</b> Each retry may increase the R² target (stricter fit), adaptive cycles (more solver loops), switch to 'long' mode (more accurate, slower), disable transfer (fit is isolated), and boost early/peak weights if needed. For host errors, adaptive cycles are increased further. These changes are designed to help the algorithm escape local minima or address specific failure modes, and they do affect fitting behavior.</li>
-                                <li><b>Progression:</b> Each retry uses the <u>best fit so far</u> to determine the next settings, not just the previous attempt.</li>
-                                <li><b>If solved criteria are not met after retries:</b> The workflow continues using the best fit achieved, even if it’s not ideal, to avoid blocking the rest of the sequence. The next channel/sequence is processed, carrying forward the best available result.</li>
-                            </ul>
                         </div>
+                        <ul style="margin-bottom:8px;">
+                            <li><b>Peak weight</b>, <b>early-rise weight</b>, and <b>adaptive cycles</b> are tuned during retries and shown in the live log. Higher values make the fit prioritize these features.</li>
+                            <li>Differences are treated as absolute values. On a log scale, even small differences are visible and important, especially if they persist across retries.</li>
+                            <li>Large values indicate substantial mismatch; small values may still be important if the fit is sensitive or the data is noisy.</li>
+                        </ul>
+                        <ul style="margin-bottom:8px;">
+                            <li><b>Proxy fitting for missing channel:</b> If a mandatory channel (e.g., 362 nm) does not have a file or folder, the workflow uses a proxy approach: it fits the available channel (e.g., 477 nm) and attempts to generate a fit for the missing channel using the available data as a proxy. This is indicated by log messages such as <b>proxy 477→362</b>.</li>
+                            <li>In proxy fitting, <b>experimental</b> refers to the measured data from the proxy channel (e.g., 477 nm), not the missing channel. All timing metrics, intensity, and error calculations are based on this proxy data.</li>
+                            <li>The proxy fit uses the best available data to estimate parameters for the missing channel. Fit quality and troubleshooting will reflect that a proxy was used, and recommendations may be shown for improving proxy accuracy.</li>
+                            <li>If the proxy fit does not meet solved criteria, retries and fallback logic are applied as usual, but the result is limited by the proxy data. Manual review is recommended for proxy fits.</li>
+                        </ul>
+                        <ul style="margin-bottom:6px;">
+                            <li><b>Retry cap:</b> The number of auto-retries is capped at 12 for safety and performance.</li>
+                            <li><b>Early stop:</b> Retries stop early if the fit is solved or if the same fitting result is obtained again (no further progress).</li>
+                            <li><b>What changes per retry:</b> Each retry may increase the R² target (stricter fit), adaptive cycles (more solver loops), switch to 'long' mode (more accurate, slower), disable transfer (fit is isolated), and boost early/peak weights if needed. For host errors, adaptive cycles are increased further. These changes are designed to help the algorithm escape local minima or address specific failure modes, and they do affect fitting behavior.</li>
+                            <li><b>Progression:</b> Each retry uses the <u>best fit so far</u> to determine the next settings, not just the previous attempt.</li>
+                            <li><b>If solved criteria are not met after retries:</b> The workflow continues using the best fit achieved, even if it’s not ideal, to avoid blocking the rest of the sequence. The next channel/sequence is processed, carrying forward the best available result.</li>
+                        </ul>
                         
                         <div style="margin-bottom: 25px; border-left: 4px solid #3498db; padding-left: 15px;">
                             <h3 style="color: #555; font-size: 15px; margin-bottom: 10px;">❌ MathJax Equations Not Rendering</h3>
@@ -2482,8 +2565,7 @@
     </div>
 
     <script>
-        // === COMPLETELY REWRITTEN, ERROR-FREE SCRIPT ===
-        // === All features preserved, all bugs fixed ===
+        console.log("showView initial:", window.showView);
 
         // ==================== GLOBAL VARIABLES ====================
         let rawData = null;
@@ -2514,7 +2596,12 @@
         let lastCarryForwardMarker = null;
         let plotDeposits = [];
         let activeDepositIndex = -1;
-        let currentZoom = 1;
+        let queuedFolders = [];
+        let sequence = [];
+        
+
+        window.developmentFittingDB = [];
+        appendFitLiveLog(`Multi-folder queue initialized: ${queuedFolders.length} folders, ${sequence.length} channel run(s).`);
 
         const EMISSION_OPTIONS = [
             { value: '1800', label: '1800 nm - ³F₄ → ³H₆' },
@@ -2541,251 +2628,45 @@
         const MULTI_CHANNEL_ORDER = ['775', '477', '645', '362', '452', '345'];
         const MULTI_CHANNEL_MANDATORY = new Set(['775', '477', '362', '345']);
         const MULTI_CHANNEL_MIN_R2 = {
-            '775': 0.99,
-            '477': 0.99,
-            '645': 0.99,
-            '362': 0.99,
-            '452': 0.99,
-            '345': 0.99,
+            '775': 0.96,
+            '477': 0.95,
+            '645': 0.91,
+            '362': 0.95,
+            '452': 0.89,
+            '345': 0.92,
         };
 
-        /**
-         * MULTI_CHANNEL_QUALITY_PROFILES
-         * 
-         * Emission-specific tuning parameters that control how aggressively the fitting algorithm
-         * attempts to improve fit quality for each wavelength. These values are based on the
-         * physical characteristics and typical behavior of each emission channel.
-         * 
-         * Each profile contains:
-         * - Limits: Maximum allowed errors before triggering warnings
-         * - Weights: How much each error type affects the score
-         * - Retry Controls: How many retry attempts and how much to increase targets
-         * - Boost Values: Starting weights for peak and early-rise regions
-         */
         const MULTI_CHANNEL_QUALITY_PROFILES = {
-            
-            /**
-             * 775 nm - Calibration Channel (³H₄ → ³H₆)
-             * 
-             * Physical characteristics:
-             * - Strongest signal, highest intensity
-             * - Serves as feeder-chain anchor for other emissions
-             * - Used for calibration before fitting 477/645
-             * - More tolerant of timing errors since it's calibration
-             * 
-             * Tuning rationale:
-             * - Lower peak boost (1.22) because 775 is naturally strong
-             * - Moderate early boost (1.34) helps with rise time calibration
-             * - Moderate retry cycles (16) - calibration needs reasonable attempts
-             * - 3% target increase per retry (0.03) - steady progression
-             */
             '775': {
-                // ERROR LIMITS (maximum allowed relative errors)
-                riseLimit: 0.16,    // 16% - can tolerate moderate rise error
-                decayLimit: 0.16,   // 16% - can tolerate moderate decay error
-                peakLimit: 0.12,    // 12% - stricter on peak since it's calibration
-                ampLimit: 0.08,     // 8%  - amplitude should be fairly accurate
-                
-                // SCORE WEIGHTS (how much each error penalizes the score)
-                riseWeight: 0.55,   // 55% penalty for rise errors
-                decayWeight: 0.32,  // 32% penalty for decay errors
-                peakWeight: 0.28,   // 28% penalty for peak errors
-                ampWeight: 0.30,    // 30% penalty for amplitude errors
-                
-                // RETRY CONTROLS
-                retryTargetBoost: 0.03,  // Increase target R² by 3% each retry
-                retryCycles: 16,         // Maximum 16 retry attempts
-                
-                // STARTING BOOST VALUES
-                earlyBoost: 1.34,   // Start with 34% more weight on early rise
-                peakBoost: 1.22,    // Start with 22% more weight on peak region
-                
+                riseLimit: 0.16, decayLimit: 0.16, peakLimit: 0.12, ampLimit: 0.08,
+                riseWeight: 0.55, decayWeight: 0.32, peakWeight: 0.28, ampWeight: 0.30,
+                retryTargetBoost: 0.03, retryCycles: 16, earlyBoost: 1.34, peakBoost: 1.22,
             },
-            
-            /**
-             * 477 nm - Blue Emission (¹G₄ → ³H₆)
-             * 
-             * Physical characteristics:
-             * - Higher energy emission
-             * - Often has sharper peaks that need precise fitting
-             * - More sensitive to timing mismatches
-             * - Critical for blue channel analysis
-             * 
-             * Tuning rationale:
-             * - Higher peak boost (1.28) to match sharp blue peaks
-             * - Higher early boost (1.34) because rise time is critical
-             * - More retries (18) - blue is harder to fit perfectly
-             * - More aggressive target increase (3.5% per retry)
-             */
             '477': {
-                // ERROR LIMITS - stricter because blue emission needs higher precision
-                riseLimit: 0.15,    // 15% - stricter rise limit
-                decayLimit: 0.16,   // 16% - standard decay limit
-                peakLimit: 0.11,    // 11% - stricter peak limit for sharp blue peaks
-                ampLimit: 0.06,     // 6%  - amplitude must be very accurate
-                
-                // SCORE WEIGHTS - higher penalties for blue errors
-                riseWeight: 0.60,   // 60% penalty - rise errors hurt more
-                decayWeight: 0.30,  // 30% penalty
-                peakWeight: 0.34,   // 34% penalty - peak errors penalized heavily
-                ampWeight: 0.34,    // 34% penalty - amplitude errors penalized heavily
-                
-                // RETRY CONTROLS - more aggressive for blue
-                retryTargetBoost: 0.035, // Increase target by 3.5% each retry (more aggressive)
-                retryCycles: 18,         // More retry attempts (18 vs 16 for 775)
-                
-                // STARTING BOOST VALUES - higher to match blue characteristics
-                earlyBoost: 1.34,   // 34% more early rise weight
-                peakBoost: 1.28,    // 28% more peak weight (higher than 775's 1.22)
-                
+                riseLimit: 0.15, decayLimit: 0.16, peakLimit: 0.11, ampLimit: 0.06,
+                riseWeight: 0.60, decayWeight: 0.30, peakWeight: 0.34, ampWeight: 0.34,
+                retryTargetBoost: 0.035, retryCycles: 18, earlyBoost: 1.34, peakBoost: 1.28,
             },
-            /**
-             * 645 nm - Red Emission (¹G₄ → ³F₄)
-             * 
-             * Physical characteristics:
-             * - Red emission often has broader peaks
-             * - Can be weaker signal in some samples
-             * - Rise time less critical than peak matching
-             * - More tolerant of early rise errors
-             * 
-             * Tuning rationale:
-             * - Highest peak boost (1.34) to capture broad peaks
-             * - Lower early boost (1.24) because rise time is less critical
-             * - Standard retry cycles (16)
-             * - Moderate target increase (3% per retry)
-             */
             '645': {
-                // ERROR LIMITS - more tolerant of errors
-                riseLimit: 0.22,    // 22% - very tolerant of rise errors
-                decayLimit: 0.20,   // 20% - tolerant of decay errors
-                peakLimit: 0.16,    // 16% - moderate peak tolerance
-                ampLimit: 0.10,     // 10% - amplitude can vary more
-                
-                // SCORE WEIGHTS - lower penalties for red
-                riseWeight: 0.42,   // 42% penalty - rise errors hurt less
-                decayWeight: 0.28,  // 28% penalty
-                peakWeight: 0.38,   // 38% penalty - peak still important
-                ampWeight: 0.34,    // 34% penalty
-                
-                // RETRY CONTROLS - standard
-                retryTargetBoost: 0.03,  // 3% increase per retry
-                retryCycles: 16,         // 16 retry attempts
-                
-                // STARTING BOOST VALUES - peak-focused
-                earlyBoost: 1.24,   // Only 24% early boost (lowest)
-                peakBoost: 1.34,    // 34% peak boost (highest)
+                riseLimit: 0.22, decayLimit: 0.20, peakLimit: 0.16, ampLimit: 0.10,
+                riseWeight: 0.42, decayWeight: 0.28, peakWeight: 0.38, ampWeight: 0.34,
+                retryTargetBoost: 0.03, retryCycles: 16, earlyBoost: 1.24, peakBoost: 1.34,
             },
-            
-            /**
-             * 362 nm - UV Emission (¹D₂ → ³F₄ UV)
-             * 
-             * Physical characteristics:
-             * - UV emission, higher energy
-             * - Often weaker signal
-             * - Sensitive to upstream feeder dynamics
-             * - Needs good rise time matching
-             * 
-             * Tuning rationale:
-             * - Higher early boost (1.34) for rise time
-             * - Moderate peak boost (1.28)
-             * - More retries (17) - UV is challenging
-             * - More aggressive target increase (3.5% per retry)
-             */
             '362': {
-                // ERROR LIMITS - moderate strictness
-                riseLimit: 0.16,    // 16% - stricter on rise for UV
-                decayLimit: 0.16,   // 16% - standard
-                peakLimit: 0.12,    // 12% - moderate
-                ampLimit: 0.07,     // 7%  - amplitude matters
-                
-                // SCORE WEIGHTS
-                riseWeight: 0.56,   // 56% penalty - rise important
-                decayWeight: 0.34,  // 34% penalty
-                peakWeight: 0.30,   // 30% penalty
-                ampWeight: 0.32,    // 32% penalty
-                
-                // RETRY CONTROLS - more aggressive
-                retryTargetBoost: 0.035, // 3.5% increase per retry
-                retryCycles: 17,         // 17 retry attempts
-                
-                // STARTING BOOST VALUES
-                earlyBoost: 1.34,   // 34% early boost
-                peakBoost: 1.28,    // 28% peak boost
+                riseLimit: 0.16, decayLimit: 0.16, peakLimit: 0.12, ampLimit: 0.07,
+                riseWeight: 0.56, decayWeight: 0.34, peakWeight: 0.30, ampWeight: 0.32,
+                retryTargetBoost: 0.035, retryCycles: 17, earlyBoost: 1.34, peakBoost: 1.28,
             },
-            
-            /**
-             * 452 nm - Violet Emission (¹D₂ → ³F₄)
-             * 
-             * Physical characteristics:
-             * - Violet emission, similar to 362 but different transition
-             * - Often weaker than blue
-             * - Can be noisy
-             * - Depends on upper-state population
-             * 
-             * Tuning rationale:
-             * - Moderate peak boost (1.28)
-             * - Lower early boost (1.26) - rise less critical
-             * - Fewer retries (15) - accept good enough
-             * - Standard target increase (3% per retry)
-             */
             '452': {
-                // ERROR LIMITS - more tolerant
-                riseLimit: 0.22,    // 22% - very tolerant
-                decayLimit: 0.20,   // 20% - tolerant
-                peakLimit: 0.16,    // 16% - moderate
-                ampLimit: 0.10,     // 10% - amplitude can vary
-                
-                // SCORE WEIGHTS - lower penalties
-                riseWeight: 0.46,   // 46% penalty
-                decayWeight: 0.28,  // 28% penalty
-                peakWeight: 0.30,   // 30% penalty
-                ampWeight: 0.28,    // 28% penalty
-                
-                // RETRY CONTROLS - less aggressive
-                retryTargetBoost: 0.03,  // 3% increase per retry
-                retryCycles: 15,         // Fewer retries (15)
-                
-                // STARTING BOOST VALUES
-                earlyBoost: 1.26,   // 26% early boost (lower)
-                peakBoost: 1.28,    // 28% peak boost (moderate)
+                riseLimit: 0.22, decayLimit: 0.20, peakLimit: 0.16, ampLimit: 0.10,
+                riseWeight: 0.46, decayWeight: 0.28, peakWeight: 0.30, ampWeight: 0.28,
+                retryTargetBoost: 0.03, retryCycles: 15, earlyBoost: 1.26, peakBoost: 1.28,
             },
-            
-            /**
-             * 345 nm - Deep UV Emission (¹I₆ → ³F₄)
-             * 
-             * Physical characteristics:
-             * - Highest energy emission in this set
-             * - Weakest signal, often noisy
-             * - Most sensitive to all timing parameters
-             * - Hardest to fit well
-             * 
-             * Tuning rationale:
-             * - Highest early boost (1.36) - rise time is critical
-             * - High peak boost (1.30) - need help to match peaks
-             * - Most retries (18) - hardest to fit
-             * - Most aggressive target increase (4% per retry)
-             */
             '345': {
-                // ERROR LIMITS - strictest for deep UV
-                riseLimit: 0.10,    // 10% - very strict on rise
-                decayLimit: 0.10,   // 10% - very strict on decay
-                peakLimit: 0.08,    // 8%  - very strict on peak
-                ampLimit: 0.06,     // 6%  - amplitude must be accurate
-                
-                // SCORE WEIGHTS - highest penalties
-                riseWeight: 0.60,   // 60% penalty - rise errors hurt most
-                decayWeight: 0.40,  // 40% penalty
-                peakWeight: 0.34,   // 34% penalty
-                ampWeight: 0.36,    // 36% penalty
-                
-                // RETRY CONTROLS - most aggressive
-                retryTargetBoost: 0.04,  // 4% increase per retry (most aggressive)
-                retryCycles: 18,         // Most retry attempts (18)
-                
-                // STARTING BOOST VALUES - highest to compensate for weak signal
-                earlyBoost: 1.36,   // 36% early boost (highest)
-                peakBoost: 1.30,    // 30% peak boost (highest)
-            }
+                riseLimit: 0.10, decayLimit: 0.10, peakLimit: 0.08, ampLimit: 0.06,
+                riseWeight: 0.60, decayWeight: 0.40, peakWeight: 0.34, ampWeight: 0.36,
+                retryTargetBoost: 0.04, retryCycles: 18, earlyBoost: 1.36, peakBoost: 1.30,
+            },
         };
 
         // ODE Database
@@ -2994,10 +2875,10 @@
                     { label: '10mol% Yb, 0.01mol% Tm', r2: '0.96117', file: 'static/plots/development/645_tm1000.png' },
                     { label: '10mol% Yb, 0.01mol% Tm', r2: '0.96117', file: 'static/plots/development/645_tm1000.png' }
                 ]
-            }
+             }
         };
-
-              function openModal(src) {
+        let currentZoom = 1;
+        function openModal(src) {
             const modal = document.getElementById("imageModal");
             const modalImg = document.getElementById("modalImg");
             if (!modal || !modalImg) return;
@@ -3110,6 +2991,78 @@
                 }
             }
         }
+        // Render evidence cards
+        function renderEvidence(emission) {
+            const grid = safeGetElement("evidenceGrid");
+            if (!grid) return;
+
+            const db = window.developmentFittingDB || [];
+            grid.innerHTML = ""; // clear previous cards
+
+            if (!db.length){
+                grid.innerHTML = `<div class="evidence-empty"> No fitting data yet.</div>`
+                return;
+            }
+            db.forEach((entry, index) => {
+                const row =document.createElement('div')
+                row.className = 'evidence-row';
+
+                let statusClass = 'ok';
+                if (entry.r2 < 0.999) {
+                    statusClass = 'error';
+                } else if (
+                    entry.rise > 0.01 ||
+                    entry.decay > 0.01 ||
+                    entry.peak > 0.01 
+                )
+                    statusClass = 'warning';
+                row.innerHTML = `
+                    <div class="col index">#${index + 1}</div>
+                    <div class="col emission">${entry.emission}nm</div>
+                    <div class="col r2 ${statusClass}">R²: ${entry.r2?.toFixed(5) || 'N/A'}</div>
+                    <div class="col"> Rise ${entry.rise?.toFixed(4) || 'N/A'}</div>
+                    <div class="col"> Decay ${entry.decay?.toFixed(4) || 'N/A'}</div>
+                    <div class="col"> Peak ${entry.peak?.toFixed(4) || 'N/A'}</div>
+
+                `;
+                grid.appendChild(row);
+
+            });
+        }
+
+        // Dropdown change
+        document.getElementById("emissionSelect").addEventListener("change", function() {
+            renderEvidence(this.value);
+        });
+        
+        
+        // CONTINUE FIT button logic
+        function setFitStoppedState(isStopped) {
+            const continueBtn = document.getElementById('continueFitButton');
+            if (continueBtn) {
+                continueBtn.style.display = isStopped ? 'inline-block' : 'none';
+            }
+        }
+
+        // Example: Call setFitStoppedState(true) when fit is stopped
+        // Integrate with your fit status logic
+        // For demonstration, show CONTINUE button if FIT DATA is disabled and CANCEL FIT is disabled
+        function updateContinueFitButton() {
+            const fitBtn = document.getElementById('fitDataButton');
+            const cancelBtn = document.getElementById('cancelFitButton');
+            const continueBtn = document.getElementById('continueFitButton');
+            if (fitBtn && cancelBtn && continueBtn) {
+                // Fit is stopped if FIT DATA is enabled OR CANCEL FIT is disabled
+                const fitDisabled = fitBtn.disabled;
+                const cancelDisabled = cancelBtn.disabled;
+                // Show CONTINUE if fit is stopped (FIT DATA disabled, CANCEL disabled)
+                continueBtn.style.display = (fitDisabled && cancelDisabled) ? 'inline-block' : 'none';
+            }
+        }
+
+        // Call updateContinueFitButton whenever fit state changes
+        setInterval(updateContinueFitButton, 1500); // Poll every 1500ms (replace with event-driven if possible)
+        
 
         // ==================== HELPER FUNCTIONS ====================
         function safeGetElement(id) {
@@ -3178,34 +3131,6 @@
         function createFitRequestId() {
             return `fit_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
         }
-        
-        // CONTINUE FIT button logic
-        function setFitStoppedState(isStopped) {
-            const continueBtn = document.getElementById('continueFitButton');
-            if (continueBtn) {
-                continueBtn.style.display = isStopped ? 'inline-block' : 'none';
-            }
-        }
-
-        // Example: Call setFitStoppedState(true) when fit is stopped
-        // Integrate with your fit status logic
-        // For demonstration, show CONTINUE button if FIT DATA is disabled and CANCEL FIT is disabled
-        function updateContinueFitButton() {
-            const fitBtn = document.getElementById('fitDataButton');
-            const cancelBtn = document.getElementById('cancelFitButton');
-            const continueBtn = document.getElementById('continueFitButton');
-            if (fitBtn && cancelBtn && continueBtn) {
-                // Fit is stopped if FIT DATA is enabled OR CANCEL FIT is disabled
-                const fitDisabled = fitBtn.disabled;
-                const cancelDisabled = cancelBtn.disabled;
-                // Show CONTINUE if fit is stopped (FIT DATA disabled, CANCEL disabled)
-                continueBtn.style.display = (fitDisabled && cancelDisabled) ? 'inline-block' : 'none';
-            }
-        }
-
-        // Call updateContinueFitButton whenever fit state changes
-        setInterval(updateContinueFitButton, 500); // Poll every 500ms (replace with event-driven if possible)
-        
 
         window.enablePeakEnhanceAndRefit = async function() {
             if (getActiveUploadMode() !== 'single') {
@@ -3292,7 +3217,7 @@
 
         function syncActiveMultiChannelStateRef() {
             const folder = getActiveMultiChannelFolder();
-            multiChannelSlotState = folder?.slotState || {};
+            multiChannelSlotState = JSON.parse(JSON.stringify(folder?.slotState || {}));
         }
 
         function renderMultiChannelFolderQueue() {
@@ -3437,37 +3362,36 @@
                 `;
             }).join('');
         }
-        // Download log as text file
         document.addEventListener('DOMContentLoaded', function() {
             const downloadbtn = document.getElementById('downloadLogBtn');
             if (downloadbtn) {
                 downloadbtn.onclick = function() {
                     const logEl = safeGetElement('fitLiveLog');
-                    if (!logEl) {
-                            alert('No log element found.');
-                            return;
-                    }
+                    if (!logEl) return;
+
                     let lines = [];
                     for (let i = 0; i < logEl.children.length; i++) {
                         lines.push(logEl.children[i].textContent);
                     }
-                    if (!lines.length) {
-                            alert('No log entries to download.');
-                            return;
-                    }
+
+                    if (!lines.length) return;
+
                     const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
                     const url = URL.createObjectURL(blob);
+
                     const a = document.createElement('a');
                     a.href = url;
                     a.download = 'fit_log.txt';
                     document.body.appendChild(a);
                     a.click();
+
                     setTimeout(() => {
                         document.body.removeChild(a);
                         URL.revokeObjectURL(url);
-                    }, 200);
+                    }, 100);
                 };
             }
+
             const deletebtn = document.getElementById('deleteLogBtn');
             if (deletebtn) {
                 deletebtn.onclick = function() {
@@ -3477,8 +3401,79 @@
                     }
                 };
             }
-                                    
-       
+            const MAX_SUMMARIES = 50;
+            const summaries = [];
+
+            const tabsEl = document.getElementById('emissionSummaryTabs');
+            const contentEl = document.getElementById('emissionSummaryContent');
+
+            function renderTabs() {
+                if (!tabsEl) return;
+                tabsEl.innerHTML = '';
+
+                summaries.forEach((item, index) => {
+                    const btn = document.createElement('button');
+                    btn.textContent = item.id;
+
+                    btn.onclick = () => renderContent(index);
+
+                    tabsEl.appendChild(btn);
+                });
+            }
+
+            function renderContent(index) {
+                if (!contentEl) return;
+
+                const item = summaries[index];
+                if (!item) return;
+
+                contentEl.innerHTML = `
+                    <div><strong>${item.id}</strong></div>
+                    <div>Timing: ${item.timing}</div>
+                    <div>${item.plotHtml}</div>
+                `;
+            }
+
+            // expose globally
+            window.addEmissionSummary = function (id, plotHtml, timing) {
+                summaries.push({ id, plotHtml, timing });
+
+                while (summaries.length > MAX_SUMMARIES) {
+                    summaries.shift();
+                }
+
+                renderTabs();
+                renderContent(summaries.length - 1);
+            };
+
+            window.downloadEmissionSummary = function () {
+                if (!summaries.length) return;
+
+                const text = summaries.map(s =>
+                    `${s.id}\nTiming: ${s.timing}`
+                ).join('\n\n');
+
+                const blob = new Blob([text], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'emission_summary.txt';
+                document.body.appendChild(a);
+                a.click();
+
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+            };
+
+            window.clearEmissionSummary = function () {
+                summaries.length = 0;
+                if (tabsEl) tabsEl.innerHTML = '';
+                if (contentEl) contentEl.innerHTML = 'No plot summary saved yet.';
+            };
+
             // Default weights
             const emissionDefaults = {
                 1800: { peak: 1.27, early: 1.3 },
@@ -3494,8 +3489,8 @@
             const selector = document.getElementById('emissionSelector');
             const peakInput = document.getElementById('peakWeightInput');
             const earlyInput = document.getElementById('earlyWeightInput');
-            const applyWeightsBtn = document.getElementById('applyWeightsBtn');
-           
+            const saveBtn = document.getElementById('saveWeightsBtn');
+
             // Load values when emission changes
             function updateInputs() {
                 const val = selector.value;
@@ -3559,9 +3554,7 @@
             earlyInput.addEventListener('input', sendWeightsDebounced);
 
             // Save button as backup
-            if (applyWeightsBtn) {
-                applyWeightsBtn.addEventListener('click', sendWeightsToBackend);
-            }
+            saveBtn.addEventListener('click', sendWeightsToBackend);
 
             // Initialize first selection
             if (selector.value && emissionDefaults[selector.value]){
@@ -3749,7 +3742,7 @@
         };
 
         function renderDevelopmentFitting(emissionKey) {
-            const key = developmentFittingDB[emissionKey] ? emissionKey : '775';
+            const key = developmentFittingDB[emissionKey] ? emissionKey : '645';
             const cfg = developmentFittingDB[key];
 
             safeSetText('devEmissionTitle', cfg.title || 'Development fitting');
@@ -3770,7 +3763,7 @@
                     gridEl.innerHTML = '<div style="padding:10px; border:1px dashed #94a3b8; border-radius:8px; color:#64748b; font-size:12px;">No development image saved yet for this emission.</div>';
                 } else {
                     gridEl.innerHTML = evidence.map((ev, idx) => `
-                       <div class="dev-card" onclick="toggleDevCard(this)" style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; transition:0.3s; cursor:pointer;">
+                        <div class="dev-card" onclick="toggleDevCard(this)" style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; transition:0.3s; cursor:pointer;">
                             <div style="padding:8px 10px; border-bottom:1px solid #e2e8f0; font-size:11px; color:#334155; font-weight:700; display:flex; justify-content:space-between; gap:8px;">
                                 <span>${ev.label || `Development ${idx + 1}`}</span>
                                 <span style="color:#0f766e;">R²: ${ev.r2 || 'N/A'}</span>
@@ -3793,6 +3786,24 @@
                 selectEl.value = key;
             }
         }
+        window.toggleDevCard = function(card) {
+            // Close any other expanded cards
+            document.querySelectorAll('.dev-card.expanded').forEach(el => {
+                if (el !== card) el.classList.remove('expanded');
+            });
+            
+            // Toggle the clicked card
+            card.classList.toggle('expanded');
+            
+            // Optional: Also zoom the image wrapper separately for double-click zoom
+            const wrapper = card.querySelector('.dev-card-wrapper');
+            if (wrapper) {
+                wrapper.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    this.classList.toggle('zoomed');
+                });
+            }
+        };
 
         window.updateDevelopmentFitting = function() {
             const selected = safeGetElement('devEmissionSelect')?.value || '645';
@@ -3807,7 +3818,7 @@
             line.textContent = `[${stamp}] ${message}`;
             line.style.padding = '2px 0';
             logEl.appendChild(line);
-            while (logEl.children.length > 120) {
+            while (logEl.children.length > 200) { // Keep log to recent 200 lines max for performance.
                 logEl.removeChild(logEl.firstChild);
             }
             logEl.scrollTop = logEl.scrollHeight;
@@ -4110,18 +4121,24 @@
                 ? 'Cancellation requested. Multi-channel sequence is stopping...'
                 : 'Fit cancelled. No new fit results were deposited.');
         };
+        console.log("showView BEFORE:", window.showView);
 
         // ==================== VIEW MANAGEMENT ====================
         window.showView = function(viewName) {
             // Hide all views
-            ['homeView', 'analyzerView', 'developmentView', 'simulatorView', 'helpView'].forEach(view => {
+            const views = ['homeView', 'analyzerView', 'developmentView', 'simulatorView', 'helpView'];
+            views.forEach(view => {
                 const panel = safeGetElement(view);
                 if (panel) panel.style.display = 'none';
             });
             
             // Show selected view
             const selectedView = safeGetElement(viewName + 'View');
-            if (selectedView) selectedView.style.display = 'block';
+            if (selectedView) {
+                selectedView.style.display = 'block';
+            } else {
+                console.warn(`View ${viewName} not found`);
+            }
             
             // Update sidebar
             document.querySelectorAll('.menu-item').forEach(item => {
@@ -4146,6 +4163,57 @@
             const statusEl = safeGetElement('sidebarStatus');
             if (statusEl) statusEl.style.color = colorMap[viewName] || '#27ae60';
         };
+        console.log("showView AFTER:", window.showView);
+        console.log("showView defined as:", typeof window.showView);
+        // ==================== INITIALIZATION ====================
+        window.addEventListener('load', function() {
+            console.log('🚀 TM Lifetime Analyzer initialized');
+            initialiseMultiChannelState();
+            renderMultiChannelFolderQueue();
+            renderMultiChannelRows();
+            showView('home');
+            renderDevelopmentFitting('645');
+            initializeFileUploadHandlers();
+            loadPlotDeposits();
+            renderDepositList();
+            if (plotDeposits.length > 0) {
+                activeDepositIndex = plotDeposits.length - 1;
+                window.openDepositedPlot(activeDepositIndex);
+            }
+            setFitUiBusy(false);
+            switchUploadMode('single');
+            updateLuminescenceFlowUi();
+            refreshSidebarFileCount();
+            
+            // Connect phonon energy inputs
+            const phononInput = safeGetElement('phononEnergyInput');
+            const phononNR = safeGetElement('phononEnergy_NR');
+            if (phononInput && phononNR) {
+                phononInput.addEventListener('input', (e) => {
+                    phononNR.value = e.target.value;
+                });
+            }
+
+            updateNrModeUi();
+            
+            // Add Wnr calculation listeners
+            ['tauFeeding3F4', 'tauRad3H4'].forEach(id => {
+                const el = safeGetElement(id);
+                if (el) el.addEventListener('input', updateWnrCalculation);
+            });
+            
+            // Set up smoothing window display
+            const smoothWindow = safeGetElement('smoothingWindow');
+            const smoothValue = safeGetElement('smoothingWindowValue');
+            if (smoothWindow && smoothValue) {
+                smoothWindow.addEventListener('input', (e) => {
+                    smoothValue.textContent = e.target.value;
+                });
+            }
+            
+            // Update excitation energy on load
+            updateExcitationEnergy();
+        });
 
         // ==================== RIBBON MANAGEMENT ====================
         window.showRibbonTab = function(tabName) {
@@ -5151,8 +5219,1075 @@
             });
         };
         // ==================== FITTING ====================
-
         window.fitData = async function(options = {}) {
+            const internalRun = Boolean(options.internalRun);
+            const fitBtn = safeGetElement('fitDataButton');
+            if (!internalRun && (!fitBtn || fitBtn.disabled)) {
+                showStatus('error', '✗ Please configure settings first');
+                return;
+            }
+
+            const flowSelection = getLuminescenceFlowSelection();
+            if (!internalRun && !flowSelection.isEtuc) {
+                try {
+                    return await runAlternativeLuminescenceFlow(options);
+                } catch (err) {
+                    console.error('Alternative luminescence flow error:', err);
+                    showStatus('error', `✗ ${err.message}`);
+                    return;
+                }
+            }
+
+            if (!internalRun && getActiveUploadMode() === 'multi') {
+                persistActiveFolderConfig();
+                const queuedFolders = [];
+                for (const folder of multiChannelFolders) {
+                    try {
+                        const folderSeq = buildMultiChannelFitSequence(folder.slotState || {});
+                        if (!folderSeq.length) continue;
+                        const snapshotSeq = folderSeq.map(item => ({
+                            ...item,
+                            fileName: item.fileName,
+                            data: {
+                                time: Array.isArray(item.data?.time) ? [...item.data.time] : [],
+                                intensity: Array.isArray(item.data?.intensity) ? [...item.data.intensity] : [],
+                                metadata: item.data?.metadata ? { ...item.data.metadata } : {},
+                            },
+                            folderName: folder.name || 'Folder',
+                            folderId: folder.id,
+                            folderSampleConfig: folder.sampleConfig ? { ...folder.sampleConfig } : null,
+                        }));
+                        queuedFolders.push({
+                            id: folder.id,
+                            name: folder.name || 'Folder',
+                            sampleConfig: folder.sampleConfig ? { ...folder.sampleConfig } : null,
+                            sequence: snapshotSeq,
+                        });
+                    } catch (err) {
+                        showStatus('warning', `Skipping ${folder.name || 'folder'}: ${err.message}`);
+                    }
+                }
+
+                const sequence = queuedFolders.flatMap(folder => folder.sequence);
+
+                if (!sequence.length) {
+                    showStatus('error', '✗ No multi-channel files are loaded for the required sequence.');
+                    return;
+                }
+
+                const loading = safeGetElement('loadingIndicator');
+                if (loading) loading.style.display = 'block';
+                setFitUiBusy(true);
+                resetFitLiveLog();
+                appendFitLiveLog(`Multi-folder queue started: ${queuedFolders.length} folder(s), ${sequence.length} channel run(s).`);
+                multiFitInProgress = true;
+                multiFitCancelRequested = false;
+                lastCarryForwardMarker = null;
+                renderMultiChannelRows();
+
+                window.fitTransferState = { seeded775: false };
+
+                try {
+                    const getTimingErrorRatios = (result) => {
+                        const tm = result?.timing_metrics || {};
+                        const measured = tm.measured || {};
+                        const fitted = tm.fitted || {};
+                        const measuredIntensity = Array.isArray(result?.measured_intensity) ? result.measured_intensity : [];
+                        const fittedIntensity = Array.isArray(result?.fitted_intensity) ? result.fitted_intensity : [];
+
+                        const riseAbs = (typeof measured.rise_time_10_90 === 'number' && typeof fitted.rise_time_10_90 === 'number')
+                            ? Math.abs(fitted.rise_time_10_90 - measured.rise_time_10_90) : null;
+                        const decayAbs = (typeof measured.decay_tau_1e === 'number' && typeof fitted.decay_tau_1e === 'number')
+                            ? Math.abs(fitted.decay_tau_1e - measured.decay_tau_1e) : null;
+                        const peakAbs = (typeof measured.peak_time === 'number' && typeof fitted.peak_time === 'number')
+                            ? Math.abs(fitted.peak_time - measured.peak_time) : null;
+
+                        const riseRatio = riseAbs != null ? riseAbs / Math.max(Math.abs(measured.rise_time_10_90 || 0), 1e-9) : null;
+                        const decayRatio = decayAbs != null ? decayAbs / Math.max(Math.abs(measured.decay_tau_1e || 0), 1e-9) : null;
+                        const peakRatio = peakAbs != null ? peakAbs / Math.max(Math.abs(measured.peak_time || 0), 1e-9) : null;
+                        const measuredPeak = measuredIntensity.length ? Math.max(...measuredIntensity) : null;
+                        const fittedPeak = fittedIntensity.length ? Math.max(...fittedIntensity) : null;
+                        const ampAbs = (measuredPeak != null && fittedPeak != null) ? Math.abs(fittedPeak - measuredPeak) : null;
+                        const ampRatio = ampAbs != null ? ampAbs / Math.max(Math.abs(measuredPeak || 0), 1e-9) : null;
+
+                        return { riseAbs, decayAbs, peakAbs, ampAbs, riseRatio, decayRatio, peakRatio, ampRatio };
+                    };
+
+                    const isTimingMismatchSevere = (result, emission) => {
+                        const e = getTimingErrorRatios(result);
+                        const profile = getMultiChannelQualityProfile(emission);
+                        return Boolean(
+                            (e.riseRatio != null && e.riseRatio > profile.riseLimit) ||
+                            (e.decayRatio != null && e.decayRatio > profile.decayLimit) ||
+                            (e.peakRatio != null && e.peakRatio > profile.peakLimit) ||
+                            (e.ampRatio != null && e.ampRatio > profile.ampLimit)
+                        );
+                    };
+
+                    const scoreResult = (result, emission) => {
+                        const r2 = (result && typeof result.r2 === 'number') ? result.r2 : -Infinity;
+                        if (!Number.isFinite(r2)) return -Infinity;
+                        const e = getTimingErrorRatios(result);
+                        const profile = getMultiChannelQualityProfile(emission);
+                        const riseP = (e.riseRatio != null && Number.isFinite(e.riseRatio)) ? e.riseRatio : 0;
+                        const decayP = (e.decayRatio != null && Number.isFinite(e.decayRatio)) ? e.decayRatio : 0;
+                        const peakP = (e.peakRatio != null && Number.isFinite(e.peakRatio)) ? e.peakRatio : 0;
+                        const ampP = (e.ampRatio != null && Number.isFinite(e.ampRatio)) ? e.ampRatio : 0;
+                        return r2 - 0.12 * (
+                            profile.riseWeight * riseP +
+                            profile.decayWeight * decayP +
+                            profile.peakWeight * peakP +
+                            profile.ampWeight * ampP
+                        );
+                    };
+
+                    const applyFixedDefaultsFromResult = (result) => {
+                        if (!result || typeof result !== 'object') return;
+                        const odeParams = result.ode_parameters || {};
+                        const guideParams = result.guide_parameters || {};
+                        Object.entries({ ...guideParams, ...odeParams }).forEach(([name, value]) => {
+                            const input = safeGetElement(`lit_${name}`);
+                            if (!input) return;
+                            if (typeof value !== 'number' || !Number.isFinite(value)) return;
+                            input.value = Number(value).toPrecision(6);
+                        });
+                    };
+
+                    let activeRunFolderId = null;
+                    let fitStopped = false;
+
+                    for (let index = 0; index < sequence.length; index++) {
+                        const item = sequence[index];
+                        if (multiFitCancelRequested) {
+                            const abortErr = new Error('Multi-channel sequence cancelled by user.');
+                            abortErr.name = 'AbortError';
+                            appendFitLiveLog('User cancelled the multi-channel sequence. Stopping further runs.');
+                            throw abortErr;
+                        }
+                        
+                        if (item.folderId && item.folderId !== activeRunFolderId) {
+                            activeRunFolderId = item.folderId;
+                            if (item.folderSampleConfig) {
+                                applyFolderSampleConfig(item.folderSampleConfig);
+                            }
+                            appendFitLiveLog(`Starting ${item.folderName} (${sequence.filter(x => x.folderId === item.folderId).length} channel(s)).`);
+                        }
+                        appendFitLiveLog(`Sequence ${index + 1}/${sequence.length}: ${item.folderName} -> fitting ${item.emission} nm from ${item.fileName}.`);
+                        if (fitStopped) {
+                            appendFitLiveLog('Previous fit stopped unexpectedly, skipping remaining sequence.');
+                        } else {
+                            showStatus('success', `✓ Completed fit for ${item.emission} nm in ${item.fileName}`);
+                        }
+                        activeRunFolderId = null;
+                    
+                        const prevItem = index > 0 ? sequence[index - 1] : null;
+                        const isFirst775 = item.emission === '775' && (!prevItem || prevItem.folderId !== item.folderId);
+                        const minAcceptR2 = getMultiChannelMinR2(item.emission);
+                        const qualityProfile = getMultiChannelQualityProfile(item.emission);
+                        if (activeMultiChannelFolderId === item.folderId) {
+                            previewMultiChannelSlot(item.slotId);
+                        }
+                        if (item.usedFallbackSource) {
+                            appendFitLiveLog(`Fallback source engaged: using ${item.sourceEmission} nm data to fit ${item.emission} nm.`);
+                        }
+                    
+                        const tunedResult = await window.fitData({
+                            internalRun: true,
+                            sourceData: item.data,
+                            emission: item.emission,
+                            fileName: `${item.folderName} | ${item.fileName}`,
+                            force775Calibration: isFirst775,
+                            manageUiBusy: false,
+                            showLoading: false,
+                            resetLiveLog: false,
+                            targetR2Override: isFirst775 ? 0.99 : 0.9999,
+                            fitModeOverride: isFirst775 ? 'fast' : undefined,
+                        });
+                        
+                        let retryCount = 0;
+                        const maxRetries = 20;
+                        
+                        const isFullySolved = (result) => {
+                            if (!result || typeof result.r2 !== 'number') return false;
+                            const tm = result?.timing_metrics?.fitted || {};
+                            // For 775 nm calibration, use lower target
+                            if (isFirst775) {
+                                return result.r2 >= 0.96;
+                            }
+                            return( 
+                                result.r2 >= 0.9999 &&
+                                (tm.rise_time_10_90 ?? 0) <= 0.01 &&
+                                (tm.peak_time ?? 1) <= 0.01 &&
+                                (tm.decay_tau_1e ?? 1) <= 0.01
+                            );
+                        };
+                        const isSolved = isFullySolved;
+
+                        let dynamicPeakBoost = 1.3;
+                        let dynamicEarlyBoost = 1.36;
+                        let bestResultDuringLoop = tunedResult;
+                        let bestScoreDuringLoop = scoreResult(bestResultDuringLoop, item.emission);
+
+                        // Main iterative auto-fix loop
+                        while (!isFullySolved(tunedResult) && retryCount < maxRetries) {
+                            retryCount++;
+                            appendFitLiveLog(`========================================`);
+                            appendFitLiveLog(`Auto-fix iteration ${retryCount}/${maxRetries} for ${item.emission} nm`);
+                            appendFitLiveLog(`Current R²: ${tunedResult.r2?.toFixed(6)}, Target: ${isFirst775 ? '0.96' : '0.9999'}`);
+                            
+                            const troubleshooting = tunedResult.diagnostics?.troubleshooting || {};
+                            const autoFix = troubleshooting.auto_fix || {};
+                            let tm = tunedResult.timing_metrics?.fitted || {};
+                            
+                            let iterationImproved = false;
+                            let bestThisIteration = tunedResult;
+                            let bestScoreThisIteration = scoreResult(bestThisIteration, item.emission);
+                            
+                            // BLOCK 1: FIT-E11 (Early-rise dominant error)
+                            if (troubleshooting.error_code === 'FIT-E11' || troubleshooting.legacy_error_code === 'FIT-E11') {
+                                appendFitLiveLog("[FIT-E11] Early-rise dominant error - applying corrections");
+                                
+                                if (autoFix.try_pulse_width_scaling && autoFix.try_pulse_width_scaling.length) {
+                                    for (let scale of autoFix.try_pulse_width_scaling) {
+                                        appendFitLiveLog(`  → Trying pulse width scale: ${scale}`);
+                                        const trialResult = await window.fitData({
+                                            ...tunedResult.options,
+                                            sourceData: item.data,
+                                            emission: item.emission,
+                                            pulse_width_scale: scale,
+                                            manageUiBusy: false,
+                                            showLoading: false,
+                                            resetLiveLog: false,
+                                        });
+                                        const trialScore = scoreResult(trialResult, item.emission);
+                                        if (trialScore > bestScoreThisIteration) {
+                                            bestThisIteration = trialResult;
+                                            bestScoreThisIteration = trialScore;
+                                            iterationImproved = true;
+                                            appendFitLiveLog(`    ✓ Better result! R²: ${trialResult.r2?.toFixed(6)}`);
+                                        }
+                                    }
+                                }
+
+                                if (autoFix.try_time_offset && autoFix.try_time_offset.length) {
+                                    for (let offset of autoFix.try_time_offset) {
+                                        appendFitLiveLog(`  → Trying time offset: ${offset}`);
+                                        const trialResult = await window.fitData({
+                                            ...tunedResult.options,
+                                            sourceData: item.data,
+                                            emission: item.emission,
+                                            time_offset: offset,
+                                            manageUiBusy: false,
+                                            showLoading: false,
+                                            resetLiveLog: false,
+                                        });
+                                        const trialScore = scoreResult(trialResult, item.emission);
+                                        if (trialScore > bestScoreThisIteration) {
+                                            bestThisIteration = trialResult;
+                                            bestScoreThisIteration = trialScore;
+                                            iterationImproved = true;
+                                            appendFitLiveLog(`    ✓ Better result! R²: ${trialResult.r2?.toFixed(6)}`);
+                                        }
+                                    }
+                                }
+                                
+                                tm = bestThisIteration.timing_metrics?.fitted || {};
+                                const e = getTimingErrorRatios(bestThisIteration);
+                                if (e.peakRatio != null && e.peakRatio > qualityProfile.peakLimit && tm.peak_time > 0.01) { 
+                                    const earlyBoost = Math.min(2.5, (bestThisIteration.options?.earlyRiseBoostOverride || 1.3) + (retryCount * 0.05));
+                                    appendFitLiveLog(`  → Applying early-rise boost: ${earlyBoost.toFixed(2)}`);
+                                    const trialResult = await window.fitData({
+                                        ...bestThisIteration.options,
+                                        sourceData: item.data,
+                                        emission: item.emission,
+                                        earlyRiseBoostOverride: earlyBoost,
+                                        manageUiBusy: false,
+                                        showLoading: false,
+                                        resetLiveLog: false,
+                                    });
+                                    const trialScore = scoreResult(trialResult, item.emission);
+                                    if (trialScore > bestScoreThisIteration) {
+                                        bestThisIteration = trialResult;
+                                        bestScoreThisIteration = trialScore;
+                                        iterationImproved = true;
+                                        appendFitLiveLog(`    ✓ Better result! R²: ${trialResult.r2?.toFixed(6)}`);
+                                    }
+                                }
+                            }
+                            
+                            // BLOCK 2: Peak time error - INCREASE PEAK WEIGHT
+                            tm = bestThisIteration.timing_metrics?.fitted || {};
+                            if ((tm.peak_time ?? 0) > 0.01) {
+                                const peakBoost = Math.min(2.5, 1.2 + (retryCount * 0.08));
+                                appendFitLiveLog(`[PEAK ERROR] Peak time = ${tm.peak_time?.toFixed(4)}ms`);
+                                appendFitLiveLog(`  → Increasing peak weight to: ${peakBoost.toFixed(2)}`);
+                                
+                                const peakResult = await window.fitData({
+                                    ...bestThisIteration.options,
+                                    sourceData: item.data,
+                                    emission: item.emission,
+                                    peakWindowBoostOverride: peakBoost,
+                                    manageUiBusy: false,
+                                    showLoading: false,
+                                    resetLiveLog: false,
+                                });
+                                
+                                const peakScore = scoreResult(peakResult, item.emission);
+                                if (peakScore > bestScoreThisIteration) {
+                                    bestThisIteration = peakResult;
+                                    bestScoreThisIteration = peakScore;
+                                    iterationImproved = true;
+                                    appendFitLiveLog(`    ✓ Peak correction improved R² to: ${peakResult.r2?.toFixed(6)}`);
+                                } else {
+                                    appendFitLiveLog(`    → Peak correction did not improve (R²: ${peakResult.r2?.toFixed(6)})`);
+                                }
+                            }
+
+                            // BLOCK 3: Decay tau errors (FIT-E22)
+                            tm = bestThisIteration.timing_metrics?.fitted || {};
+                            if (troubleshooting.error_code === 'FIT-E22' || troubleshooting.legacy_error_code === 'FIT-E22' || (tm.decay_tau_1e ?? 0) > 0.01) {
+                                appendFitLiveLog(`[DECAY ERROR] Decay tau = ${tm.decay_tau_1e?.toFixed(4)}ms`);
+                                
+                                if (autoFix.apply_baseline_correction) {
+                                    appendFitLiveLog(`  → Applying baseline correction...`);
+                                    const baselineResult = await window.fitData({
+                                        ...bestThisIteration.options,
+                                        sourceData: item.data,
+                                        emission: item.emission,
+                                        baseline_correction: true,
+                                        smoothing_window: autoFix.try_smoothing?.[0] || undefined,
+                                        manageUiBusy: false,
+                                        showLoading: false,
+                                        resetLiveLog: false,
+                                    });
+                                    const baselineScore = scoreResult(baselineResult, item.emission);
+                                    if (baselineScore > bestScoreThisIteration) {
+                                        bestThisIteration = baselineResult;
+                                        bestScoreThisIteration = baselineScore;
+                                        iterationImproved = true;
+                                        appendFitLiveLog(`    ✓ Baseline correction improved R² to: ${baselineResult.r2?.toFixed(6)}`);
+                                    }
+                                }
+                                
+                                if (autoFix.try_smoothing && autoFix.try_smoothing.length) {
+                                    for (let winSize of autoFix.try_smoothing) {
+                                        appendFitLiveLog(`  → Trying smoothing window: ${winSize}`);
+                                        const smoothResult = await window.fitData({
+                                            ...bestThisIteration.options,
+                                            sourceData: item.data,
+                                            emission: item.emission,
+                                            smoothing_window: winSize,
+                                            manageUiBusy: false,
+                                            showLoading: false,
+                                            resetLiveLog: false,
+                                        });
+                                        const smoothScore = scoreResult(smoothResult, item.emission);
+                                        if (smoothScore > bestScoreThisIteration) {
+                                            bestThisIteration = smoothResult;
+                                            bestScoreThisIteration = smoothScore;
+                                            iterationImproved = true;
+                                            appendFitLiveLog(`    ✓ Better result with window ${winSize}! R²: ${smoothResult.r2?.toFixed(6)}`);
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // BLOCK 4: Dynamic Boost
+                            dynamicPeakBoost = Math.min(2.5, dynamicPeakBoost + 0.05);
+                            dynamicEarlyBoost = Math.min(2.5, dynamicEarlyBoost + 0.05);
+                            
+                            appendFitLiveLog(`[DYNAMIC BOOST] Peak weight: ${dynamicPeakBoost.toFixed(2)}, Early weight: ${dynamicEarlyBoost.toFixed(2)}`);
+                            
+                            const boostedResult = await window.fitData({
+                                ...bestThisIteration.options,
+                                sourceData: item.data,
+                                emission: item.emission,
+                                peakWindowBoostOverride: dynamicPeakBoost,
+                                earlyRiseBoostOverride: dynamicEarlyBoost,
+                                adaptiveMaxCyclesOverride: Math.min(30, 20 + retryCount),
+                                manageUiBusy: false,
+                                showLoading: false,
+                                resetLiveLog: false,
+                            });
+                            
+                            const boostedScore = scoreResult(boostedResult, item.emission);
+                            if (boostedScore > bestScoreThisIteration) {
+                                bestThisIteration = boostedResult;
+                                bestScoreThisIteration = boostedScore;
+                                iterationImproved = true;
+                                appendFitLiveLog(`  ✓ Dynamic boost improved R² to: ${boostedResult.r2?.toFixed(6)}`);
+                            }
+                            
+                            // UPDATE BEST RESULT
+                            tunedResult = bestThisIteration;
+                            
+                            if (bestScoreThisIteration > bestScoreDuringLoop) {
+                                bestResultDuringLoop = tunedResult;
+                                bestScoreDuringLoop = bestScoreThisIteration;
+                            }
+                            
+                            tm = tunedResult.timing_metrics?.fitted || {};
+                            appendFitLiveLog(`----------------------------------------`);
+                            appendFitLiveLog(`Iteration ${retryCount} complete:`);
+                            appendFitLiveLog(`  R²: ${tunedResult.r2?.toFixed(6)}`);
+                            appendFitLiveLog(`  Rise error: ${tm.rise_time_10_90?.toFixed(4)}ms`);
+                            appendFitLiveLog(`  Peak error: ${tm.peak_time?.toFixed(4)}ms`);
+                            appendFitLiveLog(`  Decay error: ${tm.decay_tau_1e?.toFixed(4)}ms`);
+                            appendFitLiveLog(`  Improved: ${iterationImproved ? 'YES ✓' : 'NO'}`);
+                            appendFitLiveLog(`========================================`);
+                            
+                            if (isFullySolved(tunedResult)) {
+                                appendFitLiveLog(`🎉 FIT IS SOLVED! R²=${tunedResult.r2?.toFixed(6)} meets criteria.`);
+                                break;
+                            }
+                            
+                            if (!iterationImproved && retryCount > 3 && tunedResult.r2 > 0.99) {
+                                appendFitLiveLog(`⚠️ No improvement but R² is good (${tunedResult.r2?.toFixed(6)}). Accepting current fit.`);
+                                break;
+                            }
+                            
+                            if (retryCount >= maxRetries) {
+                                appendFitLiveLog(`⚠️ Reached maximum retries (${maxRetries}). Using best fit so far.`);
+                            }
+                        }
+
+                        let bestResult = tunedResult;
+                        const bestR2 = (res) => (res && typeof res.r2 === 'number' ? res.r2 : -Infinity);
+                        const extractCodes = (result) => {
+                            const code = result?.diagnostics?.troubleshooting?.error_code || 'OK';
+                            const legacy = result?.diagnostics?.troubleshooting?.legacy_error_code || code;
+                            const effective = code || legacy || 'OK';
+                            return { code, legacy, effective };
+                        };
+                        
+                        const shouldRetry = (result) => {
+                            if (!result || typeof result.r2 !== 'number') return true;
+                            const tm = result?.timing_metrics?.fitted || {};
+                            if (isFirst775) {
+                                return result.r2 < 0.96;
+                            }
+                            return(
+                                result.r2 < 0.9999 || 
+                                (tm.rise_time_10_90 ?? 1) > 0.01 ||
+                                (tm.peak_time ?? 1) > 0.01 ||
+                                (tm.decay_tau_1e ?? 1) > 0.01 
+                            );
+                        };
+                        
+                        const signatureOf = (result) => {
+                            const tm = result?.timing_metrics?.fitted || {};
+                            const { effective } = extractCodes(result);
+                            return [
+                                typeof result?.r2 === 'number' ? result.r2.toFixed(6) : 'NA',
+                                effective || 'OK',
+                                typeof tm.peak_time === 'number' ? tm.peak_time.toFixed(6) : 'NA',
+                                typeof tm.rise_time_10_90 === 'number' ? tm.rise_time_10_90.toFixed(6) : 'NA',
+                                typeof tm.decay_tau_1e === 'number' ? tm.decay_tau_1e.toFixed(6) : 'NA',
+                            ].join('|');
+                        };
+                        
+                        const buildRetryDirective = (result, attempt) => {
+                            const troubleshooting = result?.diagnostics?.troubleshooting || {};
+                            const { code, legacy, effective } = extractCodes(result);
+                            const codeBag = [code, legacy, effective];
+                            const dominant = String(troubleshooting.dominant_error_region || '').toLowerCase();
+                            const recommendationText = (troubleshooting.recommendations || []).join(' ').toLowerCase();
+                            const codeIs = (list) => codeBag.some(v => list.includes(v));
+                            const wantsEarly = dominant.includes('early') || recommendationText.includes('early') || codeIs(['FIT-E11', 'FIT-E01']);
+                            const wantsPeak = dominant.includes('peak') || recommendationText.includes('peak') || codeIs(['FIT-E12', 'FIT-E02']);
+                            const wantsTiming = dominant.includes('timing') || dominant.includes('tail') || recommendationText.includes('timing') || codeIs(['FIT-E13', 'FIT-E03', 'FIT-E21', 'FIT-E04']);
+                            const wantsHost = codeIs(['FIT-E31']) || recommendationText.includes('host') || recommendationText.includes('anneal');
+
+                            const targetBoost = Math.max(0.015, qualityProfile.retryTargetBoost + Math.min(0.02, attempt * 0.003));
+                            const directive = {
+                                label: 'strict isolated settings',
+                                options: {
+                                    forceNoTransfer: true,
+                                    fitModeOverride: 'long',
+                                    targetR2Override: Math.min(0.9999, Math.max(0.98, minAcceptR2 + targetBoost)),
+                                    adaptiveMaxCyclesOverride: Math.max(qualityProfile.retryCycles, 12 + attempt),
+                                },
+                            };
+
+                            if (wantsEarly || wantsTiming) {
+                                directive.label = wantsTiming ? 'timing-focused correction profile' : 'early-rise correction profile';
+                                directive.options.earlyRiseBoostOverride = Math.min(2.5, Math.max(qualityProfile.earlyBoost, 1.28 + 0.01 * attempt));
+                            }
+                            if (wantsPeak || wantsTiming) {
+                                directive.label = wantsTiming ? 'timing-focused correction profile' : 'peak-window correction profile';
+                                directive.options.peakWindowBoostOverride = Math.min(2.5, Math.max(qualityProfile.peakBoost, 1.22 + 0.01 * attempt));
+                            }
+                            if (wantsHost) {
+                                directive.label = 'host-influence stabilization profile';
+                                directive.options.adaptiveMaxCyclesOverride = Math.max(directive.options.adaptiveMaxCyclesOverride, 16 + attempt);
+                            }
+
+                            return directive;
+                        };
+
+                        if (shouldRetry(tunedResult)) {
+                            const firstCodes = extractCodes(tunedResult);
+                            appendFitLiveLog(
+                                `Auto-retry triggered for ${item.emission} nm (R²=${(tunedResult?.r2 ?? 0).toFixed(5)}, code=${firstCodes.effective}${firstCodes.legacy && firstCodes.legacy !== firstCodes.effective ? `, legacy=${firstCodes.legacy}` : ''}).`
+                            );
+
+                            const maxRetryAttempts = Math.max(4, Math.min(12, qualityProfile.retryCycles));
+                            const seenSignatures = new Set();
+                            let previousSignature = signatureOf(tunedResult);
+                            seenSignatures.add(previousSignature);
+
+                            for (let attempt = 1; attempt <= maxRetryAttempts; attempt++) {
+                                if (multiFitCancelRequested) {
+                                    const abortErr = new Error('Multi-channel sequence cancelled by user.');
+                                    abortErr.name = 'AbortError';
+                                    throw abortErr;
+                                }
+
+                                const retry = buildRetryDirective(bestResult, attempt);
+                                appendFitLiveLog(`Retry ${attempt}/${maxRetryAttempts} for ${item.emission} nm with ${retry.label}.`);
+                                appendFitLiveLog(`Tuned values: peak weight = ${retry.options.peakWindowBoostOverride ?? 'default'}, early-rise weight = ${retry.options.earlyRiseBoostOverride ?? 'default'}, adaptive cycles = ${retry.options.adaptiveMaxCyclesOverride ?? 'default'}`);
+                                const retryResult = await window.fitData({
+                                    internalRun: true,
+                                    sourceData: item.data,
+                                    emission: item.emission,
+                                    fileName: item.fileName,
+                                    force775Calibration: isFirst775,
+                                    manageUiBusy: false,
+                                    showLoading: false,
+                                    resetLiveLog: false,
+                                    ...retry.options,
+                                });
+
+                                if (retryResult && typeof retryResult.r2 === 'number') {
+                                    const retryCodes = extractCodes(retryResult);
+                                    appendFitLiveLog(`Retry result for ${item.emission} nm: R²=${retryResult.r2.toFixed(5)} (code=${retryCodes.effective}).`);
+
+                                    if (scoreResult(retryResult, item.emission) >= scoreResult(bestResult, item.emission)) {
+                                        bestResult = retryResult;
+                                    }
+
+                                    if (isSolved(bestResult)) {
+                                        appendFitLiveLog(`${item.emission} nm reached solved criteria; continuing to next emission.`);
+                                        break;
+                                    }
+
+                                    const sig = signatureOf(retryResult);
+                                    if (sig === previousSignature || seenSignatures.has(sig)) {
+                                        appendFitLiveLog(`${item.emission} nm produced the same fitting result again; trying final aggressive strategy.`);
+                                        
+                                        const finalAttempt = await window.fitData({
+                                            internalRun: true,
+                                            sourceData: item.data,
+                                            emission: item.emission,
+                                            fileName: item.fileName,
+                                            force775Calibration: isFirst775,
+                                            manageUiBusy: false,
+                                            showLoading: false,
+                                            resetLiveLog: false,
+                                            peakWindowBoostOverride: 2.5,
+                                            earlyRiseBoostOverride: 2.5,
+                                            adaptiveMaxCyclesOverride: 30,
+                                            fitModeOverride: 'long',
+                                        });
+                                        
+                                        if (scoreResult(finalAttempt, item.emission) > scoreResult(bestResult, item.emission)) {
+                                            bestResult = finalAttempt;
+                                            appendFitLiveLog(`Final aggressive strategy improved result: R²=${finalAttempt.r2?.toFixed(5)}`);
+                                        } else {
+                                            appendFitLiveLog(`Final aggressive strategy did not improve result.`);
+                                        }
+                                        
+                                        appendFitLiveLog(`Stopping retries for ${item.emission} nm.`);
+                                        
+                                        const measuredPeakTime = retryResult?.timing_metrics?.measured?.peak_time ?? retryResult?.timing_metrics?.experimental?.peak_time ?? 0;
+                                        const fittedPeakTime = retryResult?.timing_metrics?.fitted?.peak_time ?? 0;
+                                        const peakTimeDiff = Math.abs(fittedPeakTime - measuredPeakTime);
+                                        const measuredIntensity = Array.isArray(retryResult?.measured_intensity) ? retryResult.measured_intensity : [];
+                                        const fittedIntensity = Array.isArray(retryResult?.fitted_intensity) ? retryResult.fitted_intensity : [];
+                                        const measuredPeakAmp = measuredIntensity.length ? Math.max(...measuredIntensity) : 0;
+                                        const fittedPeakAmp = fittedIntensity.length ? Math.max(...fittedIntensity) : 0;
+                                        const peakAmpDiff = Math.abs(fittedPeakAmp - measuredPeakAmp);
+                                        let logMsg = '';
+                                        if (peakTimeDiff > 0.1) {
+                                            logMsg += `Peak time difference (${peakTimeDiff.toFixed(3)}) > 0.1. `;
+                                        }
+                                        if (peakAmpDiff > 0.1) {
+                                            logMsg += `Peak amplitude difference (${peakAmpDiff.toFixed(3)}) > 0.1. `;
+                                        }
+                                        if (logMsg) {
+                                            appendFitLiveLog(`Advanced troubleshooting: ${logMsg}Manual intervention may be needed.`);
+                                            appendFitLiveLog(`Recommendations: Check detector saturation, normalization, and consider smoothing data.`);
+                                        }
+                                        break;
+                                    }
+                                    seenSignatures.add(sig);
+                                    previousSignature = sig;
+                                }
+                            }
+
+                            if (!isSolved(bestResult)) {
+                                appendFitLiveLog(
+                                    `${item.emission} nm remains below solved criteria after retries ` +
+                                    `(best R²=${bestR2(bestResult).toFixed(5)}, target=${minAcceptR2.toFixed(2)}). Continuing sequence with best available fit.`
+                                );
+                            }
+                        }
+
+                        const finalResult = bestResult;
+                        window.developmentFittingDB.push({
+                            fileName: item.fileName,
+                            createdAt: new Date().toISOString(),
+                            config: {
+                                emission: item.emission,
+                                r2: finalResult?.r2,
+                                rise: finalResult?.timing_metrics?.fitted?.rise_time_10_90,
+                                peak: finalResult?.timing_metrics?.fitted?.peak_time,
+                                decay: finalResult?.timing_metrics?.fitted?.decay_tau_1e,
+                                retryCount: retryCount,
+                                errorCodes: finalResult?.diagnostics?.troubleshooting?.error_code || 'OK'
+                            } 
+                        });
+
+                        renderEvidence();
+                        
+                        applyFixedDefaultsFromResult(finalResult);
+                        lastCarryForwardMarker = {
+                            folderId: item.folderId || null,
+                            slotId: item.slotId || null,
+                            emission: item.emission || '',
+                            sourceEmission: item.sourceEmission || item.emission || '',
+                        };
+                        if (activeMultiChannelFolderId === item.folderId) {
+                            renderMultiChannelRows();
+                        }
+
+                        if (finalResult) {
+                            window.multiChannelResults = window.multiChannelResults || {};
+                            window.multiChannelResults[String(item.emission)] = finalResult;
+                            window.lastFitResult = finalResult;
+                        }
+
+                        if (isTimingMismatchSevere(finalResult, item.emission)) {
+                            const e = getTimingErrorRatios(finalResult);
+                            appendFitLiveLog(
+                                `Warning: ${item.emission} nm still shows timing mismatch after auto-retries ` +
+                                `(rise ratio=${e.riseRatio != null ? e.riseRatio.toFixed(3) : 'N/A'}, ` +
+                                `decay ratio=${e.decayRatio != null ? e.decayRatio.toFixed(3) : 'N/A'}, ` +
+                                `peak ratio=${e.peakRatio != null ? e.peakRatio.toFixed(3) : 'N/A'}, ` +
+                                `amp ratio=${e.ampRatio != null ? e.ampRatio.toFixed(3) : 'N/A'}).`
+                            );
+                        }
+
+                        if (multiFitCancelRequested) {
+                            const abortErr = new Error('Multi-channel sequence cancelled by user.');
+                            abortErr.name = 'AbortError';
+                            throw abortErr;
+                        }
+
+                        if (isFirst775 && finalResult && typeof finalResult.r2 === 'number' && finalResult.r2 < 0.8) {
+                            throw new Error(
+                                `775 nm calibration failed in multi-channel mode (R²=${finalResult.r2.toFixed(4)}). ` +
+                                'Sequence stopped to avoid propagating poor transfer to later channels.'
+                            );
+                        }
+                    }
+                    showStatus('success', `✓ Multi-folder queue completed: ${queuedFolders.length} folder(s), ${sequence.length} channel run(s).`);
+                    appendFitLiveLog(`Queue finished successfully for ${queuedFolders.length} folder(s).`);
+                
+                } catch (err) {
+                    if (err && err.name === 'AbortError') {
+                        showStatus('warning', 'Multi-channel fitting cancelled.');
+                    } else {
+                        console.error('Multi-channel fitting error:', err);
+                        showStatus('error', `✗ Multi-channel fitting stopped: ${err.message}`);
+                    }
+                } finally {
+                    multiFitInProgress = false;
+                    multiFitCancelRequested = false;
+                    if (loading) loading.style.display = 'none';
+                    currentFitRequestId = null;
+                    currentFitAbortController = null;
+                    setFitUiBusy(false);
+                }
+                return;
+            }
+
+            // ==================== SINGLE-CHANNEL BRANCH ====================
+            const sourceData = options.sourceData || rawData;
+            if (!sourceData) {
+                showStatus('error', '✗ Please load data first');
+                return;
+            }
+
+            const manageUiBusy = options.manageUiBusy !== false;
+            const showLoading = options.showLoading !== false;
+            const resetLog = options.resetLiveLog !== false;
+            const loading = safeGetElement('loadingIndicator');
+            const selectedEmission = options.emission || safeGetElement('emissionSelect')?.value || '477';
+            const displayFileName = options.fileName || safeGetElement('analyzerCurrentFile')?.textContent || 'Unknown file';
+
+            if (showLoading && loading) loading.style.display = 'block';
+            if (manageUiBusy) setFitUiBusy(true);
+
+            currentFitAbortController = new AbortController();
+            currentFitRequestId = createFitRequestId();
+
+            try {
+                const time = [...sourceData.time];
+                let intensity = [...sourceData.intensity];
+
+                if (safeGetElement('baselineCorrection')?.checked) {
+                    const t0 = time[0], tN = time[time.length - 1];
+                    const I0 = intensity[0], IN = intensity[intensity.length - 1];
+                    if (tN !== t0) {
+                        const slope = (IN - I0) / (tN - t0);
+                        intensity = intensity.map((I, i) => Math.max(I - (I0 + slope * (time[i] - t0)), 0));
+                    }
+                }
+
+                if (safeGetElement('smoothing')?.checked) {
+                    const windowSize = parseInt(safeGetElement('smoothingWindow')?.value || '5', 10);
+                    const half = Math.floor(windowSize / 2);
+                    const smoothed = [...intensity];
+                    for (let i = half; i < intensity.length - half; i++) {
+                        let sum = 0;
+                        for (let j = -half; j <= half; j++) sum += intensity[i + j];
+                        smoothed[i] = sum / windowSize;
+                    }
+                    intensity = smoothed;
+                }
+
+                if (safeGetElement('normalization')?.checked) {
+                    const maxVal = Math.max(...intensity);
+                    if (maxVal > 0) intensity = intensity.map(v => v / maxVal);
+                }
+
+                processedData = { time, intensity };
+
+                const fitMode = options.fitModeOverride || safeGetElement('fitModeSelect')?.value || 'fast';
+                const isLongMode = fitMode === 'long';
+                const isSingleMode = getActiveUploadMode() === 'single' && !internalRun;
+                const emissionProfile = getMultiChannelQualityProfile(selectedEmission);
+                const peakEnhanceEnabled = options.peakWindowBoostOverride != null
+                    ? true
+                    : (isSingleMode && safeGetElement('singlePeakEnhanceToggle')?.checked === true);
+                const peakWindowBoost = options.peakWindowBoostOverride != null
+                    ? Math.min(2.5, Math.max(1.0, Number(options.peakWindowBoostOverride)))
+                    : (peakEnhanceEnabled ? Math.max(1.28, emissionProfile.peakBoost) : 1.0);
+                const earlyEnhanceEnabled = options.earlyRiseBoostOverride != null
+                    ? true
+                    : (isSingleMode && safeGetElement('singleEarlyEnhanceToggle')?.checked === true);
+                const earlyRiseBoost = options.earlyRiseBoostOverride != null
+                    ? Math.min(2.5, Math.max(1.0, Number(options.earlyRiseBoostOverride)))
+                    : (earlyEnhanceEnabled ? Math.max(1.26, emissionProfile.earlyBoost) : 1.0);
+                
+                const targetR2InputVal = safeGetElement('targetR2Input')?.value;
+                const adaptiveCyclesInputVal = safeGetElement('adaptiveMaxCyclesInput')?.value;
+                const targetR2 = Math.min(
+                    0.9999,
+                    Math.max(0.90, parseFloat(options.targetR2Override != null ? options.targetR2Override : (targetR2InputVal || '0.9999')))
+                );
+                const adaptiveMaxCycles = Math.min(
+                    30,
+                    Math.max(1, parseInt(options.adaptiveMaxCyclesOverride != null ? options.adaptiveMaxCyclesOverride : (adaptiveCyclesInputVal || '8'), 10))
+                );
+                const fitConfig = {
+                    fit_quality: isLongMode ? 'accurate' : 'fast',
+                    try_best_match: isLongMode,
+                    optimize_all_points: isLongMode,
+                    target_r2: targetR2,
+                    adaptive_max_cycles: adaptiveMaxCycles,
+                };
+                window.fitTransferState = window.fitTransferState || { seeded775: false };
+                const autoTransfer = safeGetElement('autoTransfer775')?.checked !== false;
+                const transferEnabled = options.forceNoTransfer === true ? false : autoTransfer;
+                const use775Calibration = options.force775Calibration === true
+                    ? true
+                    : (transferEnabled && selectedEmission === '775' && !window.fitTransferState.seeded775);
+
+                const payload = {
+                    fit_request_id: currentFitRequestId,
+                    time,
+                    intensity,
+                    ...fitConfig,
+                    luminescence_type: flowSelection.luminescenceType,
+                    upconversion_mechanism: flowSelection.upconversionMechanism,
+                    material_model: flowSelection.materialModel,
+                    mechanism_params: collectMechanismParams(),
+                    single_tm_params: collectSingleTmParams(),
+                    doping_yb: parseFloat(safeGetElement('dopingYbInput')?.value || '10'),
+                    doping_tm: parseFloat(safeGetElement('dopingTmInput')?.value || '0.5'),
+                    host: safeGetElement('hostSelect')?.value || 'NaYF4',
+                    anneal_temp: parseFloat(safeGetElement('annealSelect')?.value || '500'),
+                    emission: selectedEmission,
+                    use_775_calibration: use775Calibration,
+                    peak_window_boost: peakWindowBoost,
+                    early_rise_boost: earlyRiseBoost,
+                    time_unit: safeGetElement('timeUnit')?.value || 'ms',
+                    pulse_width_us: parseFloat(safeGetElement('pulseWidthUs')?.value || '400'),
+                    lit_params: {
+                        Ay: parseFloat(safeGetElement('lit_Ay')?.value || '1.0'),
+                        W1: parseFloat(safeGetElement('lit_W1')?.value || '5.0'),
+                        W2: parseFloat(safeGetElement('lit_W2')?.value || '5.0'),
+                        W3: parseFloat(safeGetElement('lit_W3')?.value || '2.0'),
+                        W4: parseFloat(safeGetElement('lit_W4')?.value || '1.0'),
+                        W5: parseFloat(safeGetElement('lit_W5')?.value || '0.5'),
+                        k21: parseFloat(safeGetElement('lit_k21')?.value || '50.0'),
+                        k35: parseFloat(safeGetElement('lit_k35')?.value || '20.0'),
+                        A10: parseFloat(safeGetElement('lit_A10')?.value || '1.0'),
+                        A50: parseFloat(safeGetElement('lit_A50')?.value || '0.33'),
+                        A60: parseFloat(safeGetElement('lit_A60')?.value || '2.0'),
+                        A61: parseFloat(safeGetElement('lit_A61')?.value || '0.5'),
+                        A70: parseFloat(safeGetElement('lit_A70')?.value || '1.5'),
+                        A71: parseFloat(safeGetElement('lit_A71')?.value || '0.5'),
+                        A80: parseFloat(safeGetElement('lit_A80')?.value || '2.0'),
+                        A81: parseFloat(safeGetElement('lit_A81')?.value || '2.0'),
+                        Wcr: parseFloat(safeGetElement('lit_Wcr')?.value || '5.0'),
+                        Wb: parseFloat(safeGetElement('lit_Wb')?.value || '0.5'),
+                    },
+                    excitation_wavelength: parseFloat(safeGetElement('excitationWavelength')?.value || '980'),
+                    smoothing_window: parseInt(safeGetElement('smoothingWindow')?.value || '5', 10),
+                    model: 'multilevel_ode',
+                    ...(window.nonRadiativeConfig && {
+                        nr_mode: window.nonRadiativeConfig.nr_mode,
+                        phonon_energy_cm: window.nonRadiativeConfig.phonon_energy_cm,
+                        exp_tau_3H4_us: window.nonRadiativeConfig.exp_tau_3H4_us,
+                        tau_feeding_3F4_us: window.nonRadiativeConfig.tau_feeding_3F4_us,
+                        tau_rad_3H4_us: window.nonRadiativeConfig.tau_rad_3H4_us,
+                        coupling_constant: window.nonRadiativeConfig.coupling_constant,
+                        alpha_parameter: window.nonRadiativeConfig.alpha_parameter,
+                        use_anchor: window.nonRadiativeConfig.use_anchor,
+                        time_offset_ms: window.nonRadiativeConfig.time_offset_ms || 0
+                    })
+                };
+
+                showStatus('info', `⏳ Fitting in progress (${currentFitRequestId})`);
+                if (resetLog) resetFitLiveLog();
+                appendFitLiveLog(`Fit started: target R²=${targetR2.toFixed(6)}, max adaptive loops=${adaptiveMaxCycles}.`);
+                startFitProgressPolling(currentFitRequestId);
+
+                const response = await fetch('/fit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    signal: currentFitAbortController.signal,
+                });
+
+                if (!response.ok) {
+                    let errorData = {};
+                    try { errorData = await response.json(); } catch (_parseErr) { errorData = {}; }
+                    const backendError = errorData.error || `Server error: ${response.status}`;
+                    const backendCode = errorData.error_code || '';
+                    const err = new Error(backendError);
+                    err.backendStatus = response.status;
+                    err.backendCode = backendCode;
+                    err.backendPayload = errorData;
+                    throw err;
+                }
+
+                fittingResults = await response.json();
+                window.lastFitResult = fittingResults;
+                
+                if (fittingResults.cancelled) {
+                    showStatus('warning', 'Fit was cancelled before completion.');
+                    appendFitLiveLog('Backend reported fit cancellation.');
+                    setFitResultsHtml('<p style="color: #92400e; text-align: center;">Fit cancelled by user.</p>');
+                    return;
+                }
+                if (fittingResults.error) {
+                    throw new Error(fittingResults.error);
+                }
+
+                const exportTime = processedData ? processedData.time : [];
+                lastFitDataForExport = {
+                    time: exportTime,
+                    measured: fittingResults.measured_intensity,
+                    fitted: fittingResults.fitted_intensity
+                };
+
+                const mainTitle = buildRunTitle(displayFileName, payload, fittingResults);
+                const trace1 = { x: time, y: intensity, mode: 'lines', name: 'Experimental', line: { color: '#667eea' } };
+                const trace2 = { x: time, y: fittingResults.fitted_intensity, mode: 'lines', name: 'Fit', line: { color: '#764ba2' } };
+                Plotly.newPlot('fitChart', [trace1, trace2], {
+                    title: mainTitle,
+                    xaxis: { title: 'Time' },
+                    yaxis: { title: 'Intensity' }
+                });
+
+                // Quality and results display
+                let qualityClass = 'quality-poor';
+                let qualityText = 'Poor';
+                if (fittingResults.r2 > 0.99) { qualityClass = 'quality-excellent'; qualityText = 'Excellent'; }
+                else if (fittingResults.r2 > 0.95) { qualityClass = 'quality-good'; qualityText = 'Good'; }
+                else if (fittingResults.r2 > 0.90) { qualityClass = 'quality-acceptable'; qualityText = 'Acceptable'; }
+
+                const fmtNum = (v, d = 6) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(d) : 'N/A');
+                const fmtSci = (v, d = 3) => (typeof v === 'number' && Number.isFinite(v) ? Number(v).toExponential(d) : 'N/A');
+                const tm = fittingResults.timing_metrics || {};
+                const tmMeasured = tm.measured || {};
+                const tmFitted = tm.fitted || {};
+                const diagnostics = fittingResults.diagnostics || {};
+                const optDiag = diagnostics.optimization || {};
+                const odeParams = fittingResults.ode_parameters || {};
+                const odeUnits = fittingResults.ode_parameter_units || {};
+                const guideParams = fittingResults.guide_parameters || {};
+                const paramRoles = fittingResults.parameter_roles || {};
+                const timeUnit = tm.time_unit || (safeGetElement('timeUnit')?.value || 'ms');
+
+                if (selectedEmission === '775' && diagnostics.use_775_calibration) {
+                    window.fitTransferState.seeded775 = true;
+                }
+
+                Object.entries({ ...guideParams, ...odeParams }).forEach(([name, value]) => {
+                    const input = safeGetElement(`lit_${name}`);
+                    if (!input) return;
+                    if (typeof value !== 'number' || !Number.isFinite(value)) return;
+                    input.value = Number(value).toPrecision(6);
+                });
+
+                // ========== SAVE RESULTS BUTTON HANDLER ==========
+                const saveResultsBtn = safeGetElement('saveResultsBtn');
+                if (saveResultsBtn) {
+                    const newSaveBtn = saveResultsBtn.cloneNode(true);
+                    saveResultsBtn.parentNode.replaceChild(newSaveBtn, saveResultsBtn);
+                    
+                    newSaveBtn.addEventListener('click', function() {
+                        try {
+                            let resultToSave = null;
+                            
+                            if (window.lastFitResult) {
+                                resultToSave = window.lastFitResult;
+                            } else if (window.multiChannelResults) {
+                                const currentEmission = safeGetElement('emissionSelect')?.value || '477';
+                                resultToSave = window.multiChannelResults[String(currentEmission)];
+                            } else if (typeof fittingResults !== 'undefined' && fittingResults) {
+                                resultToSave = fittingResults;
+                            }
+                            
+                            if (!resultToSave) {
+                                showStatus('error', '✗ No fit results available. Please run a fit first.');
+                                return;
+                            }
+                            
+                            const fileName = safeGetElement('analyzerCurrentFile')?.textContent || 'Unknown';
+                            const emission = safeGetElement('emissionSelect')?.value || '477';
+                            
+                            const exportData = {
+                                export_timestamp: new Date().toISOString(),
+                                file_name: fileName,
+                                emission_nm: emission,
+                                r2: resultToSave.r2,
+                                timing_metrics: resultToSave.timing_metrics,
+                                ode_parameters: resultToSave.ode_parameters,
+                                guide_parameters: resultToSave.guide_parameters,
+                                diagnostics: resultToSave.diagnostics
+                            };
+                            
+                            if (resultToSave.measured_intensity && resultToSave.fitted_intensity) {
+                                exportData.data = {
+                                    time: resultToSave.time || (processedData ? processedData.time : null),
+                                    measured_intensity: resultToSave.measured_intensity,
+                                    fitted_intensity: resultToSave.fitted_intensity
+                                };
+                            }
+                            
+                            const jsonStr = JSON.stringify(exportData, null, 2);
+                            const blob = new Blob([jsonStr], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            const safeFileName = fileName.replace(/[^a-z0-9]/gi, '_').substring(0, 50);
+                            a.download = `fit_results_${safeFileName}_${emission}nm_${Date.now()}.json`;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                            
+                            showStatus('success', '✓ Results saved successfully');
+                        } catch (err) {
+                            console.error('Save error:', err);
+                            showStatus('error', `✗ Save failed: ${err.message}`);
+                        }
+                    });
+                }
+
+                depositCurrentRun(
+                    displayFileName,
+                    payload,
+                    fittingResults,
+                    time,
+                    intensity,
+                    fittingResults.fitted_intensity,
+                    getFitResultsHtml()
+                );
+
+                showStatus('success', `✓ ${selectedEmission} nm fitting completed and deposited to plot history`);
+                appendFitLiveLog(`Fit completed: final R²=${(fittingResults.r2 || 0).toFixed(6)}.`);
+                return fittingResults;
+                
+            } catch (err) {
+                if (err && err.name === 'AbortError') {
+                    showStatus('warning', 'Fit request aborted.');
+                    appendFitLiveLog('Fit request aborted.');
+                    setFitResultsHtml('<p style="color: #92400e; text-align: center;">Fit cancelled by user.</p>');
+                    throw err;
+                } else {
+                    console.error('❌ Fitting error:', err);
+                    let errorMessage = err.message;
+                    const backendCode = err?.backendCode || '';
+                    const backendStatus = Number(err?.backendStatus || 0);
+                    const backendPayload = err?.backendPayload || {};
+                    let resultsErrorHtml = '<p style="color: #999; text-align: center;">Fitting failed. Check console for details.</p>';
+
+                    if (err.message.includes('Failed to fetch')) {
+                        errorMessage = 'Cannot connect to backend. Make sure Flask server is running on port 5050';
+                    } else if (err.message.includes('not_configured')) {
+                        errorMessage = 'Physics not configured. Click CONFIGURE button first';
+                    } else if (backendCode === 'MISSING_DOPING' || (backendStatus === 400 && /doping/i.test(err.message))) {
+                        errorMessage = 'Missing doping values in fit request. Please set Yb and Tm doping and run again.';
+                        const requiredFields = Array.isArray(backendPayload.required_fields)
+                            ? backendPayload.required_fields.join(', ')
+                            : 'doping_yb, doping_tm';
+                        resultsErrorHtml = `
+                            <div style="border:1px solid #fecaca; background:#fff1f2; color:#7f1d1d; border-radius:10px; padding:12px; margin:10px 0;">
+                                <div style="font-weight:700; margin-bottom:6px;">Fit request rejected (missing composition)</div>
+                                <div style="font-size:13px; line-height:1.45;">
+                                    Required payload fields: <strong>${requiredFields}</strong><br>
+                                    Open sample settings and ensure both Yb% and Tm% are present before running fit.
+                                </div>
+                            </div>
+                        `;
+                    } else if (backendCode === 'INVALID_DOPING') {
+                        errorMessage = 'Invalid doping values. Yb and Tm doping must be numeric finite values.';
+                        resultsErrorHtml = `
+                            <div style="border:1px solid #fecaca; background:#fff1f2; color:#7f1d1d; border-radius:10px; padding:12px; margin:10px 0;">
+                                <div style="font-weight:700; margin-bottom:6px;">Fit request rejected (invalid composition)</div>
+                                <div style="font-size:13px; line-height:1.45;">
+                                    Please enter numeric finite values for Yb% and Tm% and retry.
+                                </div>
+                            </div>
+                        `;
+                    } else if (err.message.includes('500')) {
+                        errorMessage = 'Backend server error. Check Flask console for details';
+                    }
+
+                    showStatus('error', `✗ ${errorMessage}`);
+                    appendFitLiveLog(`Fit error: ${errorMessage}`);
+                    setFitResultsHtml(resultsErrorHtml);
+                    throw err;
+                }
+            } finally {
+                stopFitProgressPolling();
+                if (showLoading && loading) loading.style.display = 'none';
+                currentFitRequestId = null;
+                currentFitAbortController = null;
+                if (manageUiBusy) {
+                    setFitUiBusy(false);
+                }
+            }
+        };
+
+            /*window.fitData = async function(options = {}) {
             const internalRun = Boolean(options.internalRun);
             const fitBtn = safeGetElement('fitDataButton');
             if (!internalRun && (!fitBtn || fitBtn.disabled)) {
@@ -5294,14 +6429,17 @@
                     };
 
                     let activeRunFolderId = null;
+                    let fitStopped = false;
 
                     for (let index = 0; index < sequence.length; index++) {
+                        const item = sequence[index];
                         if (multiFitCancelRequested) {
                             const abortErr = new Error('Multi-channel sequence cancelled by user.');
                             abortErr.name = 'AbortError';
+                            appendFitLiveLog('User cancelled the multi-channel sequence. Stopping further runs.');
                             throw abortErr;
                         }
-                        const item = sequence[index];
+                        
                         if (item.folderId && item.folderId !== activeRunFolderId) {
                             activeRunFolderId = item.folderId;
                             if (item.folderSampleConfig) {
@@ -5309,7 +6447,15 @@
                             }
                             appendFitLiveLog(`Starting ${item.folderName} (${sequence.filter(x => x.folderId === item.folderId).length} channel(s)).`);
                         }
-
+                        appendFitLiveLog(`Sequence ${index + 1}/${sequence.length}: ${item.folderName} -> fitting ${item.emission} nm from ${item.fileName}.`);
+                        if (fitStopped) {
+                            appendFitLiveLog('Previous fit stopped unexpectedly, skipping remaining sequence.');
+                        } else {
+                            showStatus('success', `✓ Completed fit for ${item.emission} nm in ${item.fileName}`);
+                        }
+                        activeRunFolderId = null; // Clear active folder highlight between runs
+                    
+                    
                         const prevItem = index > 0 ? sequence[index - 1] : null;
                         const isFirst775 = item.emission === '775' && (!prevItem || prevItem.folderId !== item.folderId);
                         const minAcceptR2 = getMultiChannelMinR2(item.emission);
@@ -5320,8 +6466,9 @@
                         if (item.usedFallbackSource) {
                             appendFitLiveLog(`Fallback source engaged: using ${item.sourceEmission} nm data to fit ${item.emission} nm.`);
                         }
-                        appendFitLiveLog(`Sequence ${index + 1}/${sequence.length}: ${item.folderName} -> fitting ${item.emission} nm from ${item.fileName}.`);
-                        const runResult = await window.fitData({
+                       
+                      
+                        const tunedResult = await window.fitData({
                             internalRun: true,
                             sourceData: item.data,
                             emission: item.emission,
@@ -5330,9 +6477,303 @@
                             manageUiBusy: false,
                             showLoading: false,
                             resetLiveLog: false,
+                            targetR2Override: isFirst775 ? 0.99 : 0.9999,
+    fitModeOverride:        isFirst775 ? 'fast' : undefined,
                         });
+                        let retryCount = 0;
+                        const maxRetries = 20;
+                        const targetR2 = 0.9999; // Absolute minimum R² for any channel, regardless of quality profile
+                        const isFullySolved = (result) => {
+                            if (!result || typeof result.r2 !== 'number') return false;
+                            const tm = result?.timing_metrics?.fitted || {};
+                            return( 
+                                result.r2 >= 0.9999 &&
+                                (tm.rise_time_10_90 ?? 0) <= 0.01 &&
+                                (tm.peak_time ?? 1) <= 0.01 &&
+                                (tm.decay_tau_1e ?? 1) <= 0.01
+                            );
+                                
+                        };
+                        const isSolved = isFullySolved;
 
-                        let bestResult = runResult;
+                        let dynamicPeakBoost = 1.3; // Default value, can be adjusted based on diagnostics
+                        let dynamicEarlyBoost = 1.36; // Default value, can be adjusted based on diagnostics
+                        let bestResultDuringLoop = tunedResult;
+                        let bestScoreDuringLoop = scoreResult(bestResultDuringLoop, item.emission);
+
+                        // Main iterative auto-fix loop
+                        // Main iterative auto-fix loop - CONTINUE UNTIL GOOD FIT OR MAX RETRIES
+                    while (!isFullySolved(tunedResult) && retryCount < maxRetries) {
+                        retryCount++;
+                        appendFitLiveLog(`========================================`);
+                        appendFitLiveLog(`Auto-fix iteration ${retryCount}/${maxRetries} for ${item.emission} nm`);
+                        appendFitLiveLog(`Current R²: ${tunedResult.r2?.toFixed(6)}, Target: 0.9999`);
+                        
+                        const troubleshooting = tunedResult.diagnostics?.troubleshooting || {};
+                        const autoFix = troubleshooting.auto_fix || {};
+                        let tm = tunedResult.timing_metrics?.fitted || {};
+                        
+                        // Track if we made any improvement this iteration
+                        let iterationImproved = false;
+                        let bestThisIteration = tunedResult;
+                        let bestScoreThisIteration = scoreResult(bestThisIteration, item.emission);
+                        
+                        // ========== BLOCK 1: FIT-E11 (Early-rise dominant error) ==========
+                        if (troubleshooting.error_code === 'FIT-E11' || troubleshooting.legacy_error_code === 'FIT-E11') {
+                            appendFitLiveLog("[FIT-E11] Early-rise dominant error - applying corrections");
+                            
+                            // Try pulse width scaling
+                            if (autoFix.try_pulse_width_scaling && autoFix.try_pulse_width_scaling.length) {
+                                for (let scale of autoFix.try_pulse_width_scaling) {
+                                    appendFitLiveLog(`  → Trying pulse width scale: ${scale}`);
+                                    const trialResult = await window.fitData({
+                                        ...tunedResult.options,
+                                        sourceData: item.data,
+                                        emission: item.emission,
+                                        pulse_width_scale: scale,
+                                        manageUiBusy: false,
+                                        showLoading: false,
+                                        resetLiveLog: false,
+                                    });
+                                    const trialScore = scoreResult(trialResult, item.emission);
+                                    if (trialScore > bestScoreThisIteration) {
+                                        bestThisIteration = trialResult;
+                                        bestScoreThisIteration = trialScore;
+                                        iterationImproved = true;
+                                        appendFitLiveLog(`    ✓ Better result! R²: ${trialResult.r2?.toFixed(6)}`);
+                                    }
+                                }
+                            }
+
+                            // Try time offsets
+                            if (autoFix.try_time_offset && autoFix.try_time_offset.length) {
+                                for (let offset of autoFix.try_time_offset) {
+                                    appendFitLiveLog(`  → Trying time offset: ${offset}`);
+                                    const trialResult = await window.fitData({
+                                        ...tunedResult.options,
+                                        sourceData: item.data,
+                                        emission: item.emission,
+                                        time_offset: offset,
+                                        manageUiBusy: false,
+                                        showLoading: false,
+                                        resetLiveLog: false,
+                                    });
+                                    const trialScore = scoreResult(trialResult, item.emission);
+                                    if (trialScore > bestScoreThisIteration) {
+                                        bestThisIteration = trialResult;
+                                        bestScoreThisIteration = trialScore;
+                                        iterationImproved = true;
+                                        appendFitLiveLog(`    ✓ Better result! R²: ${trialResult.r2?.toFixed(6)}`);
+                                    }
+                                }
+                            }
+                            
+                            // Apply early-rise boost
+                            tm = bestThisIteration.timing_metrics?.fitted || {};
+                            const e = getTimingErrorRatios(bestThisIteration);
+                            if (e.peakRatio != null && e.peakRatio > qualityProfile.peakLimit && tm.peak_time > 0.01) { 
+                                const earlyBoost = Math.min(2.5, (bestThisIteration.options?.earlyRiseBoostOverride || 1.3) + (retryCount * 0.05));
+                                appendFitLiveLog(`  → Applying early-rise boost: ${earlyBoost.toFixed(2)}`);
+                                const trialResult = await window.fitData({
+                                    ...bestThisIteration.options,
+                                    sourceData: item.data,
+                                    emission: item.emission,
+                                    earlyRiseBoostOverride: earlyBoost,
+                                    manageUiBusy: false,
+                                    showLoading: false,
+                                    resetLiveLog: false,
+                                });
+                                const trialScore = scoreResult(trialResult, item.emission);
+                                if (trialScore > bestScoreThisIteration) {
+                                    bestThisIteration = trialResult;
+                                    bestScoreThisIteration = trialScore;
+                                    iterationImproved = true;
+                                    appendFitLiveLog(`    ✓ Better result! R²: ${trialResult.r2?.toFixed(6)}`);
+                                }
+                            }
+                        }
+                        
+                        // ========== BLOCK 2: Peak time error - INCREASE PEAK WEIGHT ==========
+                        tm = bestThisIteration.timing_metrics?.fitted || {};
+                        if ((tm.peak_time ?? 0) > 0.01) {
+                            // Increase peak weight progressively with each retry
+                            const peakBoost = Math.min(2.5, 1.2 + (retryCount * 0.08));
+                            appendFitLiveLog(`[PEAK ERROR] Peak time = ${tm.peak_time?.toFixed(4)}ms`);
+                            appendFitLiveLog(`  → Increasing peak weight to: ${peakBoost.toFixed(2)}`);
+                            
+                            const peakResult = await window.fitData({
+                                ...bestThisIteration.options,
+                                sourceData: item.data,
+                                emission: item.emission,
+                                peakWindowBoostOverride: peakBoost,
+                                manageUiBusy: false,
+                                showLoading: false,
+                                resetLiveLog: false,
+                            });
+                            
+                            const peakScore = scoreResult(peakResult, item.emission);
+                            if (peakScore > bestScoreThisIteration) {
+                                bestThisIteration = peakResult;
+                                bestScoreThisIteration = peakScore;
+                                iterationImproved = true;
+                                appendFitLiveLog(`    ✓ Peak correction improved R² to: ${peakResult.r2?.toFixed(6)}`);
+                            } else {
+                                appendFitLiveLog(`    → Peak correction did not improve (R²: ${peakResult.r2?.toFixed(6)})`);
+                            }
+                        }
+
+                        // ========== BLOCK 3: Decay tau errors (FIT-E22) ==========
+                        tm = bestThisIteration.timing_metrics?.fitted || {};
+                        if (troubleshooting.error_code === 'FIT-E22' || troubleshooting.legacy_error_code === 'FIT-E22' || (tm.decay_tau_1e ?? 0) > 0.01) {
+                            appendFitLiveLog(`[DECAY ERROR] Decay tau = ${tm.decay_tau_1e?.toFixed(4)}ms`);
+                            
+                            // Apply baseline correction
+                            if (autoFix.apply_baseline_correction) {
+                                appendFitLiveLog(`  → Applying baseline correction...`);
+                                const baselineResult = await window.fitData({
+                                    ...bestThisIteration.options,
+                                    sourceData: item.data,
+                                    emission: item.emission,
+                                    baseline_correction: true,
+                                    smoothing_window: autoFix.try_smoothing?.[0] || undefined,
+                                    manageUiBusy: false,
+                                    showLoading: false,
+                                    resetLiveLog: false,
+                                });
+                                const baselineScore = scoreResult(baselineResult, item.emission);
+                                if (baselineScore > bestScoreThisIteration) {
+                                    bestThisIteration = baselineResult;
+                                    bestScoreThisIteration = baselineScore;
+                                    iterationImproved = true;
+                                    appendFitLiveLog(`    ✓ Baseline correction improved R² to: ${baselineResult.r2?.toFixed(6)}`);
+                                }
+                            }
+                            
+                            // Try smoothing windows
+                            if (autoFix.try_smoothing && autoFix.try_smoothing.length) {
+                                for (let winSize of autoFix.try_smoothing) {
+                                    appendFitLiveLog(`  → Trying smoothing window: ${winSize}`);
+                                    const smoothResult = await window.fitData({
+                                        ...bestThisIteration.options,
+                                        sourceData: item.data,
+                                        emission: item.emission,
+                                        smoothing_window: winSize,
+                                        manageUiBusy: false,
+                                        showLoading: false,
+                                        resetLiveLog: false,
+                                    });
+                                    const smoothScore = scoreResult(smoothResult, item.emission);
+                                    if (smoothScore > bestScoreThisIteration) {
+                                        bestThisIteration = smoothResult;
+                                        bestScoreThisIteration = smoothScore;
+                                        iterationImproved = true;
+                                        appendFitLiveLog(`    ✓ Better result with window ${winSize}! R²: ${smoothResult.r2?.toFixed(6)}`);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // ========== BLOCK 4: Dynamic Boost (Always Try) ==========
+                        // Increase boost values each iteration
+                        dynamicPeakBoost = Math.min(2.5, dynamicPeakBoost + 0.05);
+                        dynamicEarlyBoost = Math.min(2.5, dynamicEarlyBoost + 0.05);
+                        
+                        appendFitLiveLog(`[DYNAMIC BOOST] Peak weight: ${dynamicPeakBoost.toFixed(2)}, Early weight: ${dynamicEarlyBoost.toFixed(2)}`);
+                        
+                        const boostedResult = await window.fitData({
+                            ...bestThisIteration.options,
+                            sourceData: item.data,
+                            emission: item.emission,
+                            peakWindowBoostOverride: dynamicPeakBoost,
+                            earlyRiseBoostOverride: dynamicEarlyBoost,
+                            adaptiveMaxCyclesOverride: Math.min(30, 20 + retryCount),
+                            manageUiBusy: false,
+                            showLoading: false,
+                            resetLiveLog: false,
+                        });
+                        
+                        const boostedScore = scoreResult(boostedResult, item.emission);
+                        if (boostedScore > bestScoreThisIteration) {
+                            bestThisIteration = boostedResult;
+                            bestScoreThisIteration = boostedScore;
+                            iterationImproved = true;
+                            appendFitLiveLog(`  ✓ Dynamic boost improved R² to: ${boostedResult.r2?.toFixed(6)}`);
+                        }
+                        
+                        // ========== UPDATE BEST RESULT ==========
+                        tunedResult = bestThisIteration;
+                        
+                        // Update global best tracking
+                        if (bestScoreThisIteration > bestScoreDuringLoop) {
+                            bestResultDuringLoop = tunedResult;
+                            bestScoreDuringLoop = bestScoreThisIteration;
+                        }
+                        
+                        tm = tunedResult.timing_metrics?.fitted || {};
+                        appendFitLiveLog(`----------------------------------------`);
+                        appendFitLiveLog(`Iteration ${retryCount} complete:`);
+                        appendFitLiveLog(`  R²: ${tunedResult.r2?.toFixed(6)} (Target: 0.9999)`);
+                        appendFitLiveLog(`  Rise error: ${tm.rise_time_10_90?.toFixed(4)}ms`);
+                        appendFitLiveLog(`  Peak error: ${tm.peak_time?.toFixed(4)}ms`);
+                        appendFitLiveLog(`  Decay error: ${tm.decay_tau_1e?.toFixed(4)}ms`);
+                        appendFitLiveLog(`  Improved this iteration: ${iterationImproved ? 'YES ✓' : 'NO'}`);
+                        appendFitLiveLog(`========================================`);
+                        
+                        // ========== CHECK IF WE SHOULD CONTINUE ==========
+                        if (isFullySolved(tunedResult)) {
+                            appendFitLiveLog(`🎉 FIT IS SOLVED! R²=${tunedResult.r2?.toFixed(6)} meets all criteria.`);
+                            break;
+                        }
+                        
+                        // If no improvement for 3 consecutive iterations and R² > 0.99, we might be stuck
+                        if (!iterationImproved && retryCount > 3 && tunedResult.r2 > 0.99) {
+                            appendFitLiveLog(`⚠️ No improvement for multiple iterations but R² is good (${tunedResult.r2?.toFixed(6)}). Accepting current fit.`);
+                            break;
+                        }
+                        
+                        if (retryCount >= maxRetries) {
+                            appendFitLiveLog(`⚠️ Reached maximum retries (${maxRetries}). Using best fit so far.`);
+                        }
+                    }
+                            dynamicPeakBoost = Math.min(2.5, dynamicPeakBoost + 0.05);
+                            dynamicEarlyBoost = Math.min(2.5, dynamicEarlyBoost + 0.05);
+
+                            appendFitLiveLog(`Boosting → peak=${dynamicPeakBoost.toFixed(2)}, early=${dynamicEarlyBoost.toFixed(2)}`);
+
+                            const boostedResult = await window.fitData({
+                                ...tunedResult.options,
+                                sourceData: item.data,
+                                emission: item.emission,
+
+                                peakWindowBoostOverride: dynamicPeakBoost,
+                                earlyRiseBoostOverride: dynamicEarlyBoost,
+
+                                adaptiveMaxCyclesOverride: 20 + retryCount,
+                            });
+                            // Update best result tracking
+                            const boostedScore = scoreResult(boostedResult, item.emission);
+                            if (boostedScore > bestScoreDuringLoop) {
+                                bestResultDuringLoop = boostedResult;
+                                bestScoreDuringLoop = boostedScore;
+                                appendFitLiveLog(`New best result after boost: R²=${boostedResult.r2?.toFixed(5)}, Score=${bestScoreDuringLoop.toFixed(5)}`);
+                            } else {
+                                appendFitLiveLog(`Boost result R²=${boostedResult.r2?.toFixed(5)} did not improve best (best=${bestResultDuringLoop.r2?.toFixed(5)})`);
+                            }
+                            tunedResult = boostedResult; // Continue iterations from the boosted result
+                            tm = tunedResult.timing_metrics?.fitted || {};
+                            appendFitLiveLog(`Iteration ${retryCount} complete. R²=${tunedResult.r2?.toFixed(5)}, Rise error=${tm.rise_time_10_90?.toFixed(3)}`);
+                        }
+                        //  Update best result after auto-fix
+                            const currentScore = scoreResult(currentResult, item.emission);
+                            if (scoreResult(tunedResult, item.emission) > currentScore) {
+                                bestResultDuringLoop = tunedResult;
+                                bestScoreDuringLoop = scoreResult(bestResultDuringLoop, item.emission);
+                                appendFitLiveLog(`New best result after auto-fix: R²=${tunedResult.r2?.toFixed(5)}, Score=${bestScoreDuringLoop.toFixed(5)}`);
+                            } else {
+                                appendFitLiveLog(`No improvement after auto-fix. Keeping previous best result with R²=${currentResult.r2?.toFixed(5)}, Score=${currentScore.toFixed(5)}`);
+                            }
+
+                        let bestResult = tunedResult;
                         const bestR2 = (res) => (res && typeof res.r2 === 'number' ? res.r2 : -Infinity);
                         const extractCodes = (result) => {
                             const code = result?.diagnostics?.troubleshooting?.error_code || 'OK';
@@ -5344,13 +6785,17 @@
                             const { code, legacy, effective } = extractCodes(result);
                             return ![code, legacy, effective].every(v => v === 'OK' || v === '');
                         };
-                        const isSolved = (result) => {
-                            if (!result || typeof result.r2 !== 'number') return false;
-                            return result.r2 >= minAcceptR2 && !isTimingMismatchSevere(result, item.emission) && !hasErrorCode(result);
-                        };
+                        
                         const shouldRetry = (result) => {
                             if (!result || typeof result.r2 !== 'number') return true;
-                            return result.r2 < minAcceptR2 || isTimingMismatchSevere(result, item.emission) || hasErrorCode(result);
+                            const tm = result?.timing_metrics?.fitted || {};
+                            return(
+                                result.r2 < 0.9999 || 
+                                (tm.rise_time_10_90 ?? 1) > 0.01 ||
+                                (tm.peak_time ?? 1) > 0.01 ||
+                                (tm.decay_tau_1e ?? 1) > 0.01 
+                                
+                            );
                         };
                         const signatureOf = (result) => {
                             const tm = result?.timing_metrics?.fitted || {};
@@ -5381,7 +6826,7 @@
                                 options: {
                                     forceNoTransfer: true,
                                     fitModeOverride: 'long',
-                                    targetR2Override: Math.min(0.99999, Math.max(0.98, minAcceptR2 + targetBoost)),
+                                    targetR2Override: Math.min(0.9999, Math.max(0.98, minAcceptR2 + targetBoost)),
                                     adaptiveMaxCyclesOverride: Math.max(qualityProfile.retryCycles, 12 + attempt),
                                 },
                             };
@@ -5402,15 +6847,15 @@
                             return directive;
                         };
 
-                        if (shouldRetry(runResult)) {
-                            const firstCodes = extractCodes(runResult);
+                        if (shouldRetry(tunedResult)) {
+                            const firstCodes = extractCodes(tunedResult);
                             appendFitLiveLog(
-                                `Auto-retry triggered for ${item.emission} nm (R²=${(runResult?.r2 ?? 0).toFixed(5)}, code=${firstCodes.effective}${firstCodes.legacy && firstCodes.legacy !== firstCodes.effective ? `, legacy=${firstCodes.legacy}` : ''}).`
+                                `Auto-retry triggered for ${item.emission} nm (R²=${(tunedResult?.r2 ?? 0).toFixed(5)}, code=${firstCodes.effective}${firstCodes.legacy && firstCodes.legacy !== firstCodes.effective ? `, legacy=${firstCodes.legacy}` : ''}).`
                             );
 
                             const maxRetryAttempts = Math.max(4, Math.min(12, qualityProfile.retryCycles));
                             const seenSignatures = new Set();
-                            let previousSignature = signatureOf(runResult);
+                            let previousSignature = signatureOf(tunedResult);
                             seenSignatures.add(previousSignature);
 
                             for (let attempt = 1; attempt <= maxRetryAttempts; attempt++) {
@@ -5451,36 +6896,60 @@
                                     const sig = signatureOf(retryResult);
                                     if (sig === previousSignature || seenSignatures.has(sig)) {
                                         appendFitLiveLog(`${item.emission} nm produced the same fitting result again; stopping retries and continuing.`);
-                                            // Advanced troubleshooting: peak time and amplitude difference check
-                                            const measuredPeakTime = retryResult?.timing_metrics?.measured?.peak_time ?? retryResult?.timing_metrics?.experimental?.peak_time ?? 0;
-                                            const fittedPeakTime = retryResult?.timing_metrics?.fitted?.peak_time ?? 0;
-                                            const peakTimeDiff = Math.abs(fittedPeakTime - measuredPeakTime);
-                                            // Amplitude: use measured and fitted intensity arrays
-                                            const measuredIntensity = Array.isArray(retryResult?.measured_intensity) ? retryResult.measured_intensity : [];
-                                            const fittedIntensity = Array.isArray(retryResult?.fitted_intensity) ? retryResult.fitted_intensity : [];
-                                            const measuredPeakAmp = measuredIntensity.length ? Math.max(...measuredIntensity) : 0;
-                                            const fittedPeakAmp = fittedIntensity.length ? Math.max(...fittedIntensity) : 0;
-                                            const peakAmpDiff = Math.abs(fittedPeakAmp - measuredPeakAmp);
-                                            let logMsg = '';
-                                            if (peakTimeDiff > 0.1) {
-                                                logMsg += `Peak time difference (${peakTimeDiff.toFixed(3)}) > 0.1. `;
+                                         // Try maximum boost as last resort
+                                        const finalAttempt = await window.fitData({
+                                            internalRun: true,
+                                            sourceData: item.data,
+                                            emission: item.emission,
+                                            fileName: item.fileName,
+                                            force775Calibration: isFirst775,
+                                            manageUiBusy: false,
+                                            showLoading: false,
+                                            resetLiveLog: false,
+                                            peakWindowBoostOverride: 2.5,
+                                            earlyRiseBoostOverride: 2.5,
+                                            adaptiveMaxCyclesOverride: 30,
+                                            fitModeOverride: 'long',
+                                        });
+                                        
+                                        if (scoreResult(finalAttempt, item.emission) > scoreResult(bestResult, item.emission)) {
+                                            bestResult = finalAttempt;
+                                            appendFitLiveLog(`Final aggressive strategy improved result: R²=${finalAttempt.r2?.toFixed(5)}`);
+                                        } else {
+                                            appendFitLiveLog(`Final aggressive strategy did not improve result.`);
+                                        }
+                                        
+                                        appendFitLiveLog(`Stopping retries for ${item.emission} nm.`);
+                                        // Advanced troubleshooting: peak time and amplitude difference check
+                                        const measuredPeakTime = retryResult?.timing_metrics?.measured?.peak_time ?? retryResult?.timing_metrics?.experimental?.peak_time ?? 0;
+                                        const fittedPeakTime = retryResult?.timing_metrics?.fitted?.peak_time ?? 0;
+                                        const peakTimeDiff = Math.abs(fittedPeakTime - measuredPeakTime);
+                                        // Amplitude: use measured and fitted intensity arrays
+                                        const measuredIntensity = Array.isArray(retryResult?.measured_intensity) ? retryResult.measured_intensity : [];
+                                        const fittedIntensity = Array.isArray(retryResult?.fitted_intensity) ? retryResult.fitted_intensity : [];
+                                        const measuredPeakAmp = measuredIntensity.length ? Math.max(...measuredIntensity) : 0;
+                                        const fittedPeakAmp = fittedIntensity.length ? Math.max(...fittedIntensity) : 0;
+                                        const peakAmpDiff = Math.abs(fittedPeakAmp - measuredPeakAmp);
+                                        let logMsg = '';
+                                        if (peakTimeDiff > 0.1) {
+                                            logMsg += `Peak time difference (${peakTimeDiff.toFixed(3)}) > 0.1. `;
+                                        }
+                                        if (peakAmpDiff > 0.1) {
+                                            logMsg += `Peak amplitude difference (${peakAmpDiff.toFixed(3)}) > 0.1. `;
+                                        }
+                                        if (logMsg) {
+                                            appendFitLiveLog(`Advanced troubleshooting: ${logMsg}Applying extra strategies.`);
+                                            // Increase peak weight for next fit (if possible)
+                                            if (!retry.options.peakWindowBoostOverride) {
+                                                retry.options.peakWindowBoostOverride = Math.min(2.5, (retry.options.peakWindowBoostOverride || 1.5) + 0.5);
+                                                appendFitLiveLog(`Peak weight increased to ${retry.options.peakWindowBoostOverride}.`);
                                             }
-                                            if (peakAmpDiff > 0.1) {
-                                                logMsg += `Peak amplitude difference (${peakAmpDiff.toFixed(3)}) > 0.1. `;
-                                            }
-                                            if (logMsg) {
-                                                appendFitLiveLog(`Advanced troubleshooting: ${logMsg}Applying extra strategies.`);
-                                                // Increase peak weight for next fit (if possible)
-                                                if (!retry.options.peakWindowBoostOverride) {
-                                                    retry.options.peakWindowBoostOverride = Math.min(2.5, (retry.options.peakWindowBoostOverride || 1.5) + 0.5);
-                                                    appendFitLiveLog(`Peak weight increased to ${retry.options.peakWindowBoostOverride}.`);
-                                                }
-                                                // Show recommendations
-                                                appendFitLiveLog(`Recommendations: Check detector saturation, normalization, and consider smoothing data. Manual initialization may help.`);
-                                                // Optionally, trigger another fit with updated options (commented for safety)
-                                                // const advancedResult = await window.fitData({ ...retry.options });
-                                                // appendFitLiveLog(`Advanced fit result: R²=${advancedResult.r2.toFixed(5)}.`);
-                                            }
+                                             // Show recommendations
+                                            appendFitLiveLog(`Recommendations: Check detector saturation, normalization, and consider smoothing data. Manual initialization may help.`);
+                                            // Optionally, trigger another fit with updated options (commented for safety)
+                                            // const advancedResult = await window.fitData({ ...retry.options });
+                                            // appendFitLiveLog(`Advanced fit result: R²=${advancedResult.r2.toFixed(5)}.`);
+                                        }
                                         break;
                                     }
                                     seenSignatures.add(sig);
@@ -5497,6 +6966,28 @@
                         }
 
                         const finalResult = bestResult;
+                        window.developmentFittingDB.push({
+                            fileName: item.fileName,
+                            createdAt: new Date().toISOString(),
+                            
+                            config:{
+                                emission: item.emission,
+                                r2: finalResult?.r2,
+                                rise: finalResult?.timing_metrics?.fitted?.rise_time_10_90,
+                                peak: finalResult?.timing_metrics?.fitted?.peak_time,
+                                decay: finalResult?.timing_metrics?.fitted?.decay_tau_1e,
+                            
+                                retryCount: retryCount,
+                                errorCodes: finalResult?.diagnostics?.troubleshooting ?.error_code || 'OK'
+                                
+                            } 
+                            
+                        });
+
+                        // Update UI live
+                        renderEvidence();
+                        
+                        
 
                         // Carry-forward defaults must come only from the selected best fit,
                         // never from intermediate lower-quality retry attempts.
@@ -5544,6 +7035,7 @@
                     }
                     showStatus('success', `✓ Multi-folder queue completed: ${queuedFolders.length} folder(s), ${sequence.length} channel run(s).`);
                     appendFitLiveLog(`Queue finished successfully for ${queuedFolders.length} folder(s).`);
+                
                 } catch (err) {
                     if (err && err.name === 'AbortError') {
                         showStatus('warning', 'Multi-channel fitting cancelled.');
@@ -5561,6 +7053,7 @@
                 }
                 return;
             }
+            */
 
             const sourceData = options.sourceData || rawData;
             if (!sourceData) {
@@ -5576,7 +7069,7 @@
             const displayFileName = options.fileName || safeGetElement('analyzerCurrentFile')?.textContent || 'Unknown file';
 
             if (showLoading && loading) loading.style.display = 'block';
-
+            
             if (manageUiBusy) {
                 setFitUiBusy(true);
             }
@@ -5632,16 +7125,134 @@
                 const earlyRiseBoost = options.earlyRiseBoostOverride != null
                     ? Math.min(2.5, Math.max(1.0, Number(options.earlyRiseBoostOverride)))
                     : (earlyEnhanceEnabled ? Math.max(1.26, emissionProfile.earlyBoost) : 1.0);
+                
+             /*if (manageUiBusy) {
+                 // Read emission weights from UI if present
+                let emissionWeights = {};
+                const emissionList = ['477', '650', '775'];
+                emissionList.forEach(em => {
+                    const peakInput = document.getElementById(`peakWeightInput_${em}`);
+                    const earlyInput = document.getElementById(`earlyWeightInput_${em}`);
+                    emissionWeights[em] = {
+                        peakWeight: peakInput && peakInput.value ? parseFloat(peakInput.value) : 1.27,
+                        earlyWeight: earlyInput && earlyInput.value ? parseFloat(earlyInput.value) : 1.3
+                    };
+                });
+                // Iterative search for best weights if fitting is the same
+                try {
+                    appendFitLiveLog(`${selectedEmission} nm produced the same fitting result again; exploring a range of peak and early-rise weights.`);
+                    let emissionDefaults = emissionWeights[selectedEmission] || { peakWeight: 1.27, earlyRiseWeight: 1.3 };
+                    let bestEmissionResult = bestResult;
+                // First try system defaults
+                let candidateWeights = [
+                    { pw: emissionDefaults.peakWeight, er: emissionDefaults.earlyRiseWeight }
+                ];
+                // If initial fit fails, loop between 1.1 and 1.5 for both weights
+                const peakWeightMin = 1.1, peakWeightMax = 1.5, peakWeightStep = 0.02;
+                const earlyRiseMin = 1.1, earlyRiseMax = 1.5, earlyRiseStep = 0.02;
+                for (let pw = peakWeightMin; pw <= peakWeightMax; pw += peakWeightStep) {
+                    for (let er = earlyRiseMin; er <= earlyRiseMax; er += earlyRiseStep) {
+                        // Skip system default already added
+                        if (pw === emissionDefaults.peakWeight && er === emissionDefaults.earlyRiseWeight) continue;
+                        candidateWeights.push({ pw: parseFloat(pw.toFixed(2)), er: parseFloat(er.toFixed(2)) });
+                    }
+                }
+                // Try all candidates
+                for (const weights of candidateWeights) {
+                    appendFitLiveLog(`Tuning: peak weight = ${weights.pw}, early-rise weight = ${weights.er}`);
+                    const tunedResult = await window.fitData({
+                        internalRun: true,
+                        sourceData: item.data,
+                        emission: item.emission,
+                        fileName: item.fileName,
+                        force775Calibration: isFirst775,
+                        manageUiBusy: false,
+                        showLoading: false,
+                        resetLiveLog: false,
+                        ...retry.options,
+                        peakWindowBoostOverride: weights.pw,
+                        earlyRiseBoostOverride: weights.er,
+                    });
+                    appendFitLiveLog(`Tuned result: R²=${tunedResult?.r2?.toFixed(5) ?? 'N/A'}`);
+                    if (scoreResult(tunedResult, item.emission) > scoreResult(bestEmissionResult, item.emission)) {
+                        bestEmissionResult = tunedResult;
+                        appendFitLiveLog(`Best result updated by tuning weights.`);
+                        if (isSolved(bestEmissionResult)) {
+                            appendFitLiveLog(`${item.emission} nm solved by tuning weights; continuing to next emission.`);
+                            break;
+                        }
+                    }
+                }
+                
+                // Do not carry over previous emission's peak weight; always start at 1.20 for each emission
+                emissionDefaults.peakWeight = peakWeightMin;
+                emissionDefaults.earlyRiseWeight = bestEmissionResult?.earlyRiseBoostOverride || emissionDefaults.earlyRiseWeight;
+                // Then try normalization and smoothing in steps
+                const extraEffects = [
+                    { label: 'Normalization', options: { normalization: true } }
+                ];
+                // Try normalization first
+                for (const effect of extraEffects) {
+                    appendFitLiveLog(`Trying extra effect: ${effect.label}`);
+                    const extraResult = await window.fitData({
+                        internalRun: true,
+                        sourceData: item.data,
+                        emission: item.emission,
+                        fileName: item.fileName,
+                        force775Calibration: isFirst775,
+                        manageUiBusy: false,
+                        showLoading: false,
+                        resetLiveLog: false,
+                        ...retry.options,
+                        ...effect.options,
+                    });
+                    appendFitLiveLog(`Extra effect result (${effect.label}): R²=${extraResult?.r2?.toFixed(5) ?? 'N/A'}`);
+                    if (scoreResult(extraResult, item.emission) > scoreResult(bestResult, item.emission)) {
+                        bestResult = extraResult;
+                        appendFitLiveLog(`Best result updated by ${effect.label}.`);
+                        if (isSolved(bestResult)) {
+                            appendFitLiveLog(`${item.emission} nm solved by ${effect.label}; continuing to next emission.`);
+                            break;
+                        }
+                    }
+                }
+                // Try smoothing with multiple window sizes
+                const smoothingWindows = [3, 5, 7, 9];
+                for (const windowSize of smoothingWindows) {
+                    appendFitLiveLog(`Trying extra effect: Smoothing (window=${windowSize})`);
+                    const extraResult = await window.fitData({
+                        internalRun: true,
+                        sourceData: item.data,
+                        emission: item.emission,
+                        fileName: item.fileName,
+                        force775Calibration: isFirst775,
+                        manageUiBusy: false,
+                        showLoading: false,
+                        resetLiveLog: false,
+                        ...retry.options,
+                        smoothing_window: windowSize
+                    });
+                    appendFitLiveLog(`Extra effect result (Smoothing window=${windowSize}): R²=${extraResult?.r2?.toFixed(5) ?? 'N/A'}`);
+                    if (scoreResult(extraResult, item.emission) > scoreResult(bestResult, item.emission)) {
+                        bestResult = extraResult;
+                        appendFitLiveLog(`Best result updated by Smoothing window=${windowSize}.`);
+                        if (isSolved(bestResult)) {
+                            appendFitLiveLog(`${item.emission} nm solved by Smoothing window=${windowSize}; continuing to next emission.`);
+                            break;
+                        }
+                    }
+                }
                 const targetR2InputVal = safeGetElement('targetR2Input')?.value;
                 const adaptiveCyclesInputVal = safeGetElement('adaptiveMaxCyclesInput')?.value;
-                const targetR2Raw = options.targetR2Override != null ? options.targetR2Override : (targetR2InputVal || '0.9995');
+                const targetR2Raw = options.targetR2Override != null ? options.targetR2Override : (targetR2InputVal || '0.9999');
                 const adaptiveCyclesRaw = options.adaptiveMaxCyclesOverride != null ? options.adaptiveMaxCyclesOverride : (adaptiveCyclesInputVal || '8');
                 const targetR2 = Math.min(
-                    0.999995,
-                    Math.max(0.90, parseFloat(targetR2Raw))
+                    0.9999,
+                    Math.max(0.90, parseFloat(options.targetR2Override != null ? options.targetR2Override : (targetR2InputVal || '0.9999')))
+
                 );
                 const adaptiveMaxCycles = Math.min(
-                    20,
+                    30,// absolute upper limit to prevent infinite loops
                     Math.max(1, parseInt(adaptiveCyclesRaw, 10))
                 );
                 const fitConfig = {
@@ -5745,6 +7356,7 @@
                 }
 
                 fittingResults = await response.json();
+                window.lastFitResult = fittingResults;
                 if (fittingResults.cancelled) {
                     showStatus('warning', 'Fit was cancelled before completion.');
                     appendFitLiveLog('Backend reported fit cancellation.');
@@ -5754,6 +7366,7 @@
                 if (fittingResults.error) {
                     throw new Error(fittingResults.error);
                 }
+                window.lastFitResult = fittingResults;
 
                 const exportTime = processedData ? processedData.time : [];
                 lastFitDataForExport = {
@@ -5979,10 +7592,150 @@
                     }
                 }
 
-                const saveBtn = safeGetElement('saveResultsBtn');
-                if (saveBtn) {
-                    saveBtn.disabled = false;
-                    saveBtn.style.opacity = '1';
+                
+                // ========== SAVE RESULTS BUTTON HANDLER ==========
+                const saveResultsBtn = safeGetElement('saveResultsBtn');
+                if (saveResultsBtn) {
+                    
+                    const newSaveBtn = saveResultsBtn.cloneNode(true);
+                    saveResultsBtn.parentNode.replaceChild(newSaveBtn, saveResultsBtn);
+                    
+                    newSaveBtn.addEventListener('click', function() {
+                        try {
+                            // Determine what data to save
+                            let resultToSave = null;
+                            
+                            // Priority 1: lastFitResult (set during fitting)
+                            if (window.lastFitResult) {
+                                resultToSave = window.lastFitResult;
+                                console.log('Saving from lastFitResult');
+                            } 
+                            // Priority 2: multiChannelResults for current emission
+                            else if (window.multiChannelResults) {
+                                const currentEmission = safeGetElement('emissionSelect')?.value || '477';
+                                resultToSave = window.multiChannelResults[String(currentEmission)];
+                                console.log('Saving from multiChannelResults for', currentEmission);
+                            }
+                            // Priority 3: check if fittingResults is in scope (for single fit)
+                            else if (typeof fittingResults !== 'undefined' && fittingResults) {
+                                resultToSave = fittingResults;
+                                console.log('Saving from fittingResults');
+                            }
+                            
+                            if (!resultToSave) {
+                                showStatus('error', '✗ No fit results available. Please run a fit first.');
+                                return;
+                            }
+                            
+                            // Get current file name and emission
+                            const fileName = safeGetElement('analyzerCurrentFile')?.textContent || 'Unknown';
+                            const emission = safeGetElement('emissionSelect')?.value || '477';
+                            
+                            // Prepare export data
+                            const exportData = {
+                                export_timestamp: new Date().toISOString(),
+                                file_name: fileName,
+                                emission_nm: emission,
+                                fit_quality: {
+                                    r2: resultToSave.r2,
+                                    r2_adjusted: resultToSave.r2_adjusted || resultToSave.r2,
+                                    aic: resultToSave.aic,
+                                    bic: resultToSave.bic
+                                },
+                                timing_metrics: resultToSave.timing_metrics,
+                                ode_parameters: resultToSave.ode_parameters,
+                                guide_parameters: resultToSave.guide_parameters,
+                                parameter_roles: resultToSave.parameter_roles,
+                                diagnostics: resultToSave.diagnostics
+                            };
+                            if (resultToSave.measured_intensity && resultToSave.fitted_intensity) {
+                                exportData.data = {
+                                    time: resultToSave.time || (processedData ? processedData.time : null),
+                                    measured_intensity: resultToSave.measured_intensity,
+                                    fitted_intensity: resultToSave.fitted_intensity
+                                };
+                            }
+                            const jsonStr = JSON.stringify(exportData, null, 2);
+                            const blob = new Blob([jsonStr], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            const safeFileName = fileName.replace(/[^a-z0-9]/gi, '_').substring(0, 50);
+                            a.download = `fit_results_${safeFileName}_${emission}nm_${Date.now()}.json`;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                            
+                            showStatus('success', '✓ Results saved successfully');
+                        } catch (err) {
+                            console.error('Save error:', err);
+                            showStatus('error', `✗ Save failed: ${err.message}`);
+                        }
+                    });
+                }
+
+                // ========== SAVE WEIGHTS BUTTON HANDLER ==========
+                const saveWeightsBtn = document.getElementById('saveWeightsBtn');
+                if (saveWeightsBtn) {
+                    const newWeightsBtn = saveWeightsBtn.cloneNode(true);
+                    saveWeightsBtn.parentNode.replaceChild(newWeightsBtn, saveWeightsBtn);
+                    
+                    newWeightsBtn.addEventListener('click', function() {
+                        try {
+                            // Collect all LIT parameters from the UI
+                            const litParams = {};
+                            const litParamInputs = document.querySelectorAll('[id^="lit_"]');
+                            litParamInputs.forEach(input => {
+                                const paramName = input.id.replace('lit_', '');
+                                litParams[paramName] = parseFloat(input.value) || 0;
+                            });
+                            
+                            // Collect other parameters
+                            const weightsData = {
+                                export_timestamp: new Date().toISOString(),
+                                emission: safeGetElement('emissionSelect')?.value || '477',
+                                doping: {
+                                    yb: parseFloat(safeGetElement('dopingYbInput')?.value || '10'),
+                                    tm: parseFloat(safeGetElement('dopingTmInput')?.value || '0.5')
+                                },
+                                host: safeGetElement('hostSelect')?.value || 'NaYF4',
+                                anneal_temp: parseFloat(safeGetElement('annealSelect')?.value || '500'),
+                                fit_mode: safeGetElement('fitModeSelect')?.value || 'fast',
+                                target_r2: parseFloat(safeGetElement('targetR2Input')?.value || '0.9999'),
+                                adaptive_cycles: parseInt(safeGetElement('adaptiveMaxCyclesInput')?.value || '8'),
+                                lit_parameters: litParams
+                            };
+                            
+                            // Add boost settings if they exist
+                            const peakBoostToggle = safeGetElement('singlePeakEnhanceToggle');
+                            const earlyBoostToggle = safeGetElement('singleEarlyEnhanceToggle');
+                            if (peakBoostToggle) {
+                                weightsData.peak_enhance_enabled = peakBoostToggle.checked;
+                            }
+                            if (earlyBoostToggle) {
+                                weightsData.early_enhance_enabled = earlyBoostToggle.checked;
+                            }
+                            
+                            // Create and download
+                            const jsonStr = JSON.stringify(weightsData, null, 2);
+                            const blob = new Blob([jsonStr], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `weights_${weightsData.emission}nm_${Date.now()}.json`;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                            
+                            showStatus('success', '✓ Weights saved successfully');
+                            
+                        } catch (err) {
+                            console.error('Save weights error:', err);
+                            showStatus('error', `✗ Save weights failed: ${err.message}`);
+                        }
+                    });
                 }
 
                 const legacyDownloadBtn = document.getElementById('downloadBtn');
@@ -6053,6 +7806,7 @@
                     setFitResultsHtml(resultsErrorHtml);
                     throw err;
                 }
+            
             } finally {
                 stopFitProgressPolling();
                 if (showLoading && loading) loading.style.display = 'none';
@@ -6063,6 +7817,8 @@
                 }
             }
         };
+        */
+    
         // ---------- shared CSV helpers ----------
         const EMISSION_LABELS = {
             '1800': '3F4_3H6_1800nm', '1230': '3H5_3H6_1230nm',
@@ -6596,7 +8352,7 @@
 
             try {
                 const key = `tm_save_${Date.now()}`;
-                localStorage.setItem(key, JSON.stringify(data, null, 2));
+                localStorage.setItem(key, JSON.stringify(savePayload, null, 2));
 
                 const saves = JSON.parse(localStorage.getItem('tm_saves') || '[]');
                 saves.push({ key, timestamp: data.timestamp });
@@ -7011,56 +8767,23 @@
 
         // Storage for multi-channel results used by auto-fill
         window.multiChannelResults = window.multiChannelResults || {};
+        window.showView = window.showView;
+        if (typeof window.showView !== 'function') {
+            window.showView = function(viewName) {
+            const views = ['homeView', 'analyzerView', 'developmentView', 'simulatorView', 'helpView'];
 
-        // ==================== INITIALIZATION ====================
-        window.addEventListener('load', function() {
-            console.log('🚀 TM Lifetime Analyzer initialized');
-            initialiseMultiChannelState();
-            renderMultiChannelFolderQueue();
-            renderMultiChannelRows();
-            showView('home');
-            renderDevelopmentFitting('775');
-            initializeFileUploadHandlers();
-            loadPlotDeposits();
-            renderDepositList();
-            if (plotDeposits.length > 0) {
-                activeDepositIndex = plotDeposits.length - 1;
-                window.openDepositedPlot(activeDepositIndex);
-            }
-            setFitUiBusy(false);
-            switchUploadMode('single');
-            updateLuminescenceFlowUi();
-            refreshSidebarFileCount();
-            
-            // Connect phonon energy inputs
-            const phononInput = safeGetElement('phononEnergyInput');
-            const phononNR = safeGetElement('phononEnergy_NR');
-            if (phononInput && phononNR) {
-                phononInput.addEventListener('input', (e) => {
-                    phononNR.value = e.target.value;
-                });
-            }
-
-            updateNrModeUi();
-            
-            // Add Wnr calculation listeners
-            ['tauFeeding3F4', 'tauRad3H4'].forEach(id => {
-                const el = safeGetElement(id);
-                if (el) el.addEventListener('input', updateWnrCalculation);
+            views.forEach(v => {
+                const el = document.getElementById(v);
+                if (el) el.style.display = 'none';
             });
-            
-            // Set up smoothing window display
-            const smoothWindow = safeGetElement('smoothingWindow');
-            const smoothValue = safeGetElement('smoothingWindowValue');
-            if (smoothWindow && smoothValue) {
-                smoothWindow.addEventListener('input', (e) => {
-                    smoothValue.textContent = e.target.value;
-                });
-            }
-            
-            // Update excitation energy on load
-            updateExcitationEnergy();
-        });
+
+             const target = document.getElementById(viewName + 'View');
+            if (target) target.style.display = 'block';
+        };
+        
+}
+
+        
     </script>
 </body>
 </html>

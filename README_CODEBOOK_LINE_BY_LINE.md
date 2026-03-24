@@ -1,5 +1,123 @@
 # TM Lifetime Analyzer - Supervisor Codebook (Line-by-Line Companion)
 
+fitData()
+│
+├── [CHECK] Internal Run Flag (options.internalRun)
+│
+├── [CHECK] Flow Selection (getLuminescenceFlowSelection)
+│   └── IF NOT ETUC → runAlternativeLuminescenceFlow() → EXIT
+│
+├── [CHECK] Upload Mode
+│   │
+│   ├── MULTI-CHANNEL BRANCH
+│   │   │
+│   │   ├── persistActiveFolderConfig()
+│   │   ├── buildMultiChannelFitSequence() → Build sequence for all folders
+│   │   ├── window.fitTransferState = { seeded775: false }
+│   │   │
+│   │   ├── [MAIN LOOP] for each item in sequence
+│   │   │   │
+│   │   │   ├── Check multiFitCancelRequested
+│   │   │   ├── Apply folder sample config if folder changes
+│   │   │   ├── isFirst775 = item.emission === '775' && new folder
+│   │   │   │
+│   │   │   ├── [RECURSIVE CALL] tunedResult = await window.fitData({
+│   │   │   │       internalRun: true,
+│   │   │   │       sourceData: item.data,
+│   │   │   │       emission: item.emission,
+│   │   │   │       force775Calibration: isFirst775,
+│   │   │   │   })
+│   │   │   │
+│   │   │   ├── [AUTO-FIX LOOP] while (!isFullySolved && retryCount < 20)
+│   │   │   │   │
+│   │   │   │   ├── Check error codes (FIT-E11, FIT-E22)
+│   │   │   │   ├── Apply pulse width scaling, time offsets, smoothing
+│   │   │   │   ├── Dynamic boost: peak +0.05, early +0.05 each iteration
+│   │   │   │   └── Track bestResultDuringLoop with scoreResult()
+│   │   │   │
+│   │   │   ├── [RETRY LOGIC] if (shouldRetry)
+│   │   │   │   │
+│   │   │   │   ├── buildRetryDirective() based on error codes
+│   │   │   │   ├── For attempt 1 to maxRetryAttempts
+│   │   │   │   │   ├── Call fitData with retry options
+│   │   │   │   │   ├── Check signature for convergence
+│   │   │   │   │   └── If same signature → FINAL AGGRESSIVE ATTEMPT
+│   │   │   │   └── Update bestResult
+│   │   │   │
+│   │   │   ├── finalResult = bestResult
+│   │   │   ├── window.developmentFittingDB.push() → Store for evidence
+│   │   │   ├── applyFixedDefaultsFromResult() → Update UI inputs
+│   │   │   ├── lastCarryForwardMarker = { folderId, slotId, emission }
+│   │   │   ├── window.multiChannelResults[emission] = finalResult
+│   │   │   ├── window.lastFitResult = finalResult ★★★ SAVE BUTTON DATA ★★★
+│   │   │   │
+│   │   │   └── Check isFirst775 R² < 0.8 → throw error
+│   │   │
+│   │   └── [FINALLY] Reset multiFitInProgress, hide loading, setFitUiBusy(false)
+│   │
+│   └── SINGLE-CHANNEL BRANCH
+│       │
+│       ├── sourceData = options.sourceData || rawData
+│       ├── validate sourceData exists
+│       │
+│       ├── [DATA PROCESSING]
+│       │   ├── baselineCorrection? → linear detrend
+│       │   ├── smoothing? → moving average with window size
+│       │   └── normalization? → divide by max intensity
+│       │
+│       ├── [FIT CONFIGURATION]
+│       │   ├── fitMode: 'fast' or 'long' (accurate mode)
+│       │   ├── peakWindowBoost: from options or UI (max 2.5)
+│       │   ├── earlyRiseBoost: from options or UI (max 2.5)
+│       │   ├── targetR2: from options or UI (min 0.90, max 0.9999)
+│       │   └── adaptiveMaxCycles: from options or UI (min 1, max 30)
+│       │
+│       ├── [PAYLOAD BUILD]
+│       │   ├── time, intensity
+│       │   ├── luminescence_type, upconversion_mechanism, material_model
+│       │   ├── mechanism_params, single_tm_params
+│       │   ├── doping_yb, doping_tm, host, anneal_temp
+│       │   ├── emission: selectedEmission
+│       │   ├── use_775_calibration: (transferEnabled && emission === '775' && !seeded775)
+│       │   ├── peak_window_boost, early_rise_boost
+│       │   ├── lit_params: all A_y, W1-W5, k21, k35, A10, A50, A60, A61, A70, A71, A80, A81, Wcr, Wb
+│       │   ├── excitation_wavelength, smoothing_window
+│       │   └── nonRadiativeConfig (if exists)
+│       │
+│       ├── [FETCH TO BACKEND]
+│       │   └── POST /fit with payload and abortController signal
+│       │
+│       ├── [RESPONSE HANDLING]
+│       │   ├── Check response.ok → throw error if not
+│       │   ├── fittingResults = await response.json()
+│       │   ├── Check fittingResults.cancelled → return
+│       │   ├── Check fittingResults.error → throw
+│       │   └── ★★★ window.lastFitResult = fittingResults ★★★ SAVE BUTTON DATA ★★★
+│       │
+│       ├── [PLOT UPDATE]
+│       │   ├── Plotly.newPlot() with experimental + fitted traces
+│       │   ├── buildRunTitle() for plot title
+│       │   └── depositCurrentRun() → save to plot depository
+│       │
+│       ├── [RESULTS DISPLAY]
+│       │   ├── Quality indicators (Excellent/Good/Acceptable/Poor)
+│       │   ├── Timing metrics (peak, rise, decay)
+│       │   ├── ODE parameters table
+│       │   ├── Guide parameters table
+│       │   ├── Troubleshooting panel with recommendations
+│       │   └── Physics insight panel (ODE equation, constants)
+│       │
+│       ├── [SAVE BUTTON HANDLERS] ★★★
+│       │   ├── saveResultsBtn: saves window.lastFitResult to JSON
+│       │   └── saveWeightsBtn: saves LIT parameters to JSON
+│       │
+│       └── Return fittingResults
+│
+└── [ERROR HANDLING]
+    ├── AbortError → show cancelled warning
+    ├── MISSING_DOPING → show composition error
+    ├── INVALID_DOPING → show invalid values error
+    └── Other errors → show generic error message
 ## Why this file exists
 This is a companion README written as a book-style guide for your supervisor.
 It explains what each part of the code does, with line references, call flow, and intent.
