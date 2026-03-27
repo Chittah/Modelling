@@ -1523,10 +1523,18 @@
                                 </div>
                                 <div style="flex: 0 0 220px;">
                                     <label style="font-size: 11px; font-weight: bold; color: #374151; display: block; margin-bottom: 8px;">Adaptive Max Loops</label>
-                                    <input type="number" id="adaptiveMaxCyclesInput" min="1" max="20" step="1" value="8"
+                                    <input type="number" id="adaptiveMaxCyclesInput" min="1" max="50" step="1" value="8"
                                         style="width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #d1d5db; font-size: 11px;">
                                     <div style="font-size: 9px; color: #6b7280; margin-top: 4px; line-height: 1.3;">
                                         Higher value explores more adaptive passes (slower runtime).
+                                    </div>
+                                </div>
+                                <div style="flex: 0 0 180px;">
+                                    <label style="font-size: 11px; font-weight: bold; color: #374151; display: block; margin-bottom: 8px;">Max Retries</label>
+                                    <input type="number" id="maxRetriesInput" min="1" max="25" step="1" value="12"
+                                        style="width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #d1d5db; font-size: 11px;">
+                                    <div style="font-size: 9px; color: #6b7280; margin-top: 4px; line-height: 1.3;">
+                                        Max retry attempts per emission when fit criteria are not met.
                                     </div>
                                 </div>
                                 <div style="flex: 0 0 240px;">
@@ -1585,7 +1593,7 @@
                                     Use this when troubleshooting reports dominant early-rise error. Applies only in single-channel mode.
                                 </div>
                             </div>
-                            <div style="margin-bottom: 16px;">
+                            <div style="margin-top: 8px; padding: 8px; background: #eef2ff; border-left: 3px solid #6366f1; border-radius: 4px; font-size: 10px; color: #3730a3;">
                                 <h3 style="color: #667eea; margin-bottom: 10px;">Set Starting Weights and Error Tolerances Per Emission</h3>
                                 <p style="font-size: 12px; color: #374151; margin-bottom: 12px;">
                                     Defaults: Peak Weight = 1.27, Early-Rise Weight = 1.3, Error Tolerances = 0.01. Adjust these to guide the fitting process based on your data quality and specific goals. Higher weights will make the fit prioritise matching that feature, while lower error tolerances will make the fit more strict in matching that aspect of the data.
@@ -2367,7 +2375,7 @@
                                 <li><strong>General rule:</strong> Apply the single-channel remedy first, then return to multi-channel sequence when the channel is stable.</li>
                             </ul>
                             <div style="margin-top: 6px; font-size: 11px; color: #374151; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 6px; padding: 6px 8px;">
-                                <strong>New:</strong> Multi-channel mode now performs automatic error-code-driven retries (FIT-E11/E12/E13/E21, with legacy FIT-E01/E02/E03/E04 support), including stricter 775 early-rise correction and timing-mismatch recovery for 345/362, so manual single-channel pre-fit is usually not required.
+                                <strong>New:</strong> Multi-channel mode now performs automatic error-code-driven retries (FIT-E11/E12/E13/E21/E22/E41/E42/E43, with legacy FIT-E01/E02/E03/E04/E05 support), including stricter 775 early-rise correction, decay-tau correction, tolerance-driven correction, and timing-mismatch recovery for 345/362, so manual single-channel pre-fit is usually not required.
                             </div>
                             <p style="color: #666; margin-top: 8px; margin-bottom: 6px;"><strong>Error codes used in troubleshooting output:</strong></p>
                             <ul style="color: #666; line-height: 1.7; margin-top: 0;">
@@ -2376,7 +2384,11 @@
                                 <li><strong>FIT-E12</strong> (legacy FIT-E02): Peak-window dominant mismatch (check apex weighting/saturation)</li>
                                 <li><strong>FIT-E13</strong> (legacy FIT-E03): Tail dominant mismatch (check baseline and late-time SNR)</li>
                                 <li><strong>FIT-E21</strong> (legacy FIT-E04): R² looks acceptable, but timing alignment is still poor (rise/peak/decay timing mismatch)</li>
+                                <li><strong>FIT-E22</strong> (legacy FIT-E05): Decay tau difference exceeds threshold (check baseline, pulse width, and timing alignment)</li>
                                 <li><strong>FIT-E31</strong>: Host/annealing influence likely dominates; revisit host mole factor, lattice energy, and annealing assumptions.</li>
+                                <li><strong>FIT-E41</strong>: Peak timing tolerance not met (peak position error exceeds user-set tolerance)</li>
+                                <li><strong>FIT-E42</strong>: Rise time tolerance not met (rise time error exceeds user-set tolerance)</li>
+                                <li><strong>FIT-E43</strong>: Decay tau tolerance not met (decay tau error exceeds user-set tolerance)</li>
                             </ul>
                              <ul style="margin-bottom:8px;">
                                 <li><b>Peak weight</b>, <b>early-rise weight</b>, and <b>adaptive cycles</b> are tuned during retries and shown in the live log. Higher values make the fit prioritize these features.</li>
@@ -2390,9 +2402,9 @@
                                 <li>If the proxy fit does not meet solved criteria, retries and fallback logic are applied as usual, but the result is limited by the proxy data. Manual review is recommended for proxy fits.</li>
                             </ul>
                             <ul style="margin-bottom:6px;">
-                                <li><b>Retry cap:</b> The number of auto-retries is capped at 12 for safety and performance.</li>
-                                <li><b>Early stop:</b> Retries stop early if the fit is solved or if the same fitting result is obtained again (no further progress).</li>
-                                <li><b>What changes per retry:</b> Each retry may increase the R² target (stricter fit), adaptive cycles (more solver loops), switch to 'long' mode (more accurate, slower), disable transfer (fit is isolated), and boost early/peak weights if needed. For host errors, adaptive cycles are increased further. These changes are designed to help the algorithm escape local minima or address specific failure modes, and they do affect fitting behavior.</li>
+                                <li><b>Retry cap:</b> The number of auto-retries is configurable via the <em>Max Retries</em> input (default 12, max 25).</li>
+                                <li><b>Early stop:</b> Retries stop early if the fit is solved or if the same fitting result is obtained 3 times despite strategy escalation (no further progress possible).</li>
+                                <li><b>What changes per retry:</b> Each retry may increase the R² target (stricter fit), adaptive cycles (more solver loops), switch to 'long' mode (more accurate, slower), disable transfer (fit is isolated), and boost early/peak weights if needed. For host errors, adaptive cycles are increased further. When repeated results occur, the system escalates by boosting weights and cycles more aggressively to escape local minima.</li>
                                 <li><b>Progression:</b> Each retry uses the <u>best fit so far</u> to determine the next settings, not just the previous attempt.</li>
                                 <li><b>If solved criteria are not met after retries:</b> The workflow continues using the best fit achieved, even if it’s not ideal, to avoid blocking the rest of the sequence. The next channel/sequence is processed, carrying forward the best available result.</li>
                             </ul>
@@ -3437,6 +3449,18 @@
                 `;
             }).join('');
         }
+        // Default weights (script-level so fitData can access them)
+        const emissionDefaults = {
+            1800: { peak: 1.27, early: 1.3, tolerances: { peak: 0.01, decay: 0.01, rise: 0.01 } },
+            1230: { peak: 1.27, early: 1.3, tolerances: { peak: 0.01, decay: 0.01, rise: 0.01 } },
+            775:  { peak: 1.27, early: 1.3, tolerances: { peak: 0.01, decay: 0.01, rise: 0.01 } },
+            645:  { peak: 1.27, early: 1.3, tolerances: { peak: 0.01, decay: 0.01, rise: 0.01 } },
+            477:  { peak: 1.27, early: 1.3, tolerances: { peak: 0.01, decay: 0.01, rise: 0.01 } },
+            452:  { peak: 1.27, early: 1.3, tolerances: { peak: 0.01, decay: 0.01, rise: 0.01 } },
+            362:  { peak: 1.27, early: 1.3, tolerances: { peak: 0.01, decay: 0.01, rise: 0.01 } },
+            345:  { peak: 1.27, early: 1.3, tolerances: { peak: 0.01, decay: 0.01, rise: 0.01 } }
+        };
+
         // Download log as text file
         document.addEventListener('DOMContentLoaded', function() {
             const downloadbtn = document.getElementById('downloadLogBtn');
@@ -3477,19 +3501,6 @@
                     }
                 };
             }
-                                    
-       
-            // Default weights
-            const emissionDefaults = {
-                1800: { peak: 1.27, early: 1.3 },
-                1230: { peak: 1.27, early: 1.3 },
-                775:  { peak: 1.27, early: 1.3 },
-                645:  { peak: 1.27, early: 1.3 },
-                477:  { peak: 1.27, early: 1.3 },
-                452:  { peak: 1.27, early: 1.3 },
-                362:  { peak: 1.27, early: 1.3 },
-                345:  { peak: 1.27, early: 1.3 }
-            };
 
             const selector = document.getElementById('emissionSelector');
             const peakInput = document.getElementById('peakWeightInput');
@@ -3504,6 +3515,15 @@
                 
                 peakInput.value = emissionDefaults[val].peak;
                 earlyInput.value = emissionDefaults[val].early;
+
+                // Load per-emission tolerances into the tolerance inputs
+                const tols = emissionDefaults[val].tolerances || {};
+                const errPeakEl = document.getElementById('errPeak');
+                const errDecayEl = document.getElementById('errDecay');
+                const errRiseEl = document.getElementById('errRise');
+                if (errPeakEl) errPeakEl.value = tols.peak ?? 0.01;
+                if (errDecayEl) errDecayEl.value = tols.decay ?? 0.01;
+                if (errRiseEl) errRiseEl.value = tols.rise ?? 0.01;
             }
 
             selector.addEventListener('change', updateInputs);
@@ -3529,9 +3549,13 @@
                     rise: Number.isFinite(riseErr) ? riseErr : 0.01
                 };
 
-                // Update local storage
+                // Update local storage (weights + tolerances)
                 emissionDefaults[emission].peak = peakWeight;
                 emissionDefaults[emission].early = earlyWeight;
+                if (!emissionDefaults[emission].tolerances) emissionDefaults[emission].tolerances = {};
+                emissionDefaults[emission].tolerances.peak = errorTolerance.peak;
+                emissionDefaults[emission].tolerances.decay = errorTolerance.decay;
+                emissionDefaults[emission].tolerances.rise = errorTolerance.rise;
 
                 // POST to backend
                 fetch('/updateEmissionWeights', {
@@ -3557,6 +3581,11 @@
 
             peakInput.addEventListener('input', sendWeightsDebounced);
             earlyInput.addEventListener('input', sendWeightsDebounced);
+            // Also send when tolerance inputs change
+            ['errPeak', 'errDecay', 'errRise'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener('input', sendWeightsDebounced);
+            });
 
             // Save button as backup
             if (applyWeightsBtn) {
@@ -3807,7 +3836,7 @@
             line.textContent = `[${stamp}] ${message}`;
             line.style.padding = '2px 0';
             logEl.appendChild(line);
-            while (logEl.children.length > 120) {
+            while (logEl.children.length > 1000) {
                 logEl.removeChild(logEl.firstChild);
             }
             logEl.scrollTop = logEl.scrollHeight;
@@ -3902,21 +3931,22 @@
 
             listEl.innerHTML = plotDeposits.map((item, idx) => {
                 const isActive = idx === activeDepositIndex;
+                const isBest = item.isBestFit;
                 return `
                     <button onclick="openDepositedPlot(${idx})" style="
                         width: 100%;
                         text-align: left;
                         margin-bottom: 6px;
-                        border: 1px solid ${isActive ? '#1d4ed8' : '#cbd5e1'};
-                        background: ${isActive ? '#dbeafe' : '#ffffff'};
+                        border: ${isBest ? '2px solid #16a34a' : ('1px solid ' + (isActive ? '#1d4ed8' : '#cbd5e1'))};
+                        background: ${isBest ? '#dcfce7' : (isActive ? '#dbeafe' : '#ffffff')};
                         color: #1f2937;
                         border-radius: 5px;
                         padding: 8px;
                         cursor: pointer;
                         font-size: 11px;
                     ">
-                        <div style="font-weight: 700; color: #1e3a8a;">${idx + 1}. ${item.fileName || 'Unnamed file'}</div>
-                        <div style="margin-top: 3px; color: #475569;">${item.createdAtLabel || ''}</div>
+                        <div style="font-weight: 700; color: ${isBest ? '#166534' : '#1e3a8a'};">${isBest ? '★ ' : ''}${idx + 1}. ${item.fileName || 'Unnamed file'}${isBest ? ' <span style="font-size:10px; background:#16a34a; color:#fff; padding:1px 5px; border-radius:3px; margin-left:4px;">BEST FIT</span>' : ''}</div>
+                        <div style="margin-top: 3px; color: #475569;">${item.createdAtLabel || ''}${isBest && item.r2 != null ? ' | R²=' + item.r2.toFixed(6) : ''}</div>
                     </button>
                 `;
             }).join('');
@@ -4023,7 +4053,7 @@
             showStatus('success', 'All deposited plots cleared.');
         };
 
-        function depositCurrentRun(fileName, payload, fitRes, time, measured, fitted, resultsHtml) {
+        function depositCurrentRun(fileName, payload, fitRes, time, measured, fitted, resultsHtml, extraFlags) {
             const entry = {
                 fileName: fileName || 'Unknown file',
                 createdAt: new Date().toISOString(),
@@ -4048,6 +4078,7 @@
                 timing_metrics: fitRes?.timing_metrics || {},
                 physics_output: fitRes?.physics_output || null,
                 parameter_roles: fitRes?.parameter_roles || {},
+                isBestFit: !!(extraFlags && extraFlags.isBestFit),
                 time,
                 measured,
                 fitted,
@@ -5333,6 +5364,12 @@
                         });
 
                         let bestResult = runResult;
+                        // Track the weights that produced the best result so retries
+                        // explore around proven-good values, not monotonically increasing.
+                        let bestWeights = {
+                            peak: runResult?.diagnostics?.peak_window_boost || 1.0,
+                            early: runResult?.diagnostics?.early_rise_boost || 1.0,
+                        };
                         const bestR2 = (res) => (res && typeof res.r2 === 'number' ? res.r2 : -Infinity);
                         const extractCodes = (result) => {
                             const code = result?.diagnostics?.troubleshooting?.error_code || 'OK';
@@ -5373,47 +5410,118 @@
                             const wantsEarly = dominant.includes('early') || recommendationText.includes('early') || codeIs(['FIT-E11', 'FIT-E01']);
                             const wantsPeak = dominant.includes('peak') || recommendationText.includes('peak') || codeIs(['FIT-E12', 'FIT-E02']);
                             const wantsTiming = dominant.includes('timing') || dominant.includes('tail') || recommendationText.includes('timing') || codeIs(['FIT-E13', 'FIT-E03', 'FIT-E21', 'FIT-E04']);
+                            const wantsDecay = dominant.includes('decay') || recommendationText.includes('decay') || codeIs(['FIT-E22', 'FIT-E05', 'FIT-E43']);
                             const wantsHost = codeIs(['FIT-E31']) || recommendationText.includes('host') || recommendationText.includes('anneal');
+                            const wantsToleranceFix = codeIs(['FIT-E41', 'FIT-E42', 'FIT-E43']);
 
                             const targetBoost = Math.max(0.015, qualityProfile.retryTargetBoost + Math.min(0.02, attempt * 0.003));
+                            const escalation = qualityProfile._escalationCount || 0;
                             const directive = {
                                 label: 'strict isolated settings',
                                 options: {
                                     forceNoTransfer: true,
                                     fitModeOverride: 'long',
-                                    targetR2Override: Math.min(0.99999, Math.max(0.98, minAcceptR2 + targetBoost)),
-                                    adaptiveMaxCyclesOverride: Math.max(qualityProfile.retryCycles, 12 + attempt),
+                                    targetR2Override: Math.min(0.99999, Math.max(0.98, minAcceptR2 + targetBoost + escalation * 0.005)),
+                                    adaptiveMaxCyclesOverride: Math.max(qualityProfile.retryCycles, 12 + attempt + escalation * 2),
                                 },
                             };
 
                             if (wantsEarly || wantsTiming) {
                                 directive.label = wantsTiming ? 'timing-focused correction profile' : 'early-rise correction profile';
-                                directive.options.earlyRiseBoostOverride = Math.min(2.5, Math.max(qualityProfile.earlyBoost, 1.28 + 0.01 * attempt));
+                                // Use bestWeights as center, not a linearly-increasing formula
+                                directive.options.earlyRiseBoostOverride = Math.min(10.0, Math.max(qualityProfile.earlyBoost, bestWeights.early * (1.0 + 0.05 * escalation)));
                             }
                             if (wantsPeak || wantsTiming) {
                                 directive.label = wantsTiming ? 'timing-focused correction profile' : 'peak-window correction profile';
-                                directive.options.peakWindowBoostOverride = Math.min(2.5, Math.max(qualityProfile.peakBoost, 1.22 + 0.01 * attempt));
+                                directive.options.peakWindowBoostOverride = Math.min(10.0, Math.max(qualityProfile.peakBoost, bestWeights.peak * (1.0 + 0.05 * escalation)));
                             }
                             if (wantsHost) {
                                 directive.label = 'host-influence stabilization profile';
                                 directive.options.adaptiveMaxCyclesOverride = Math.max(directive.options.adaptiveMaxCyclesOverride, 16 + attempt);
                             }
+                            if (wantsDecay) {
+                                directive.label = 'decay-tau correction profile';
+                                directive.options.fitModeOverride = 'long';
+                                directive.options.adaptiveMaxCyclesOverride = Math.max(directive.options.adaptiveMaxCyclesOverride, 14 + attempt);
+                            }
+                            if (wantsToleranceFix) {
+                                directive.label = 'tolerance-driven correction profile';
+                                directive.options.fitModeOverride = 'long';
+                                directive.options.adaptiveMaxCyclesOverride = Math.max(directive.options.adaptiveMaxCyclesOverride, 14 + attempt);
+                                // Anchor on bestWeights (proven best) with small exploration range
+                                directive.options.earlyRiseBoostOverride = Math.min(10.0, Math.max(qualityProfile.earlyBoost, bestWeights.early * (1.0 + 0.05 * escalation)));
+                                directive.options.peakWindowBoostOverride = Math.min(10.0, Math.max(qualityProfile.peakBoost, bestWeights.peak * (1.0 + 0.05 * escalation)));
+                            }
+
+                            // Apply backend-computed proposed actions.
+                            // Backend proposals are now anchored on the weights that actually
+                            // produced the current best result (used_weight field), rather than
+                            // blindly escalating from a linear formula.
+                            const proposedActions = troubleshooting.proposed_actions || [];
+                            const proposedSummaryParts = [];
+                            for (const action of proposedActions) {
+                                if (action.action === 'boost_peak' && action.peak_window_boost) {
+                                    // Use the backend-proposed value only if it improves on bestWeights
+                                    const proposed = action.peak_window_boost;
+                                    directive.options.peakWindowBoostOverride = Math.max(
+                                        directive.options.peakWindowBoostOverride || 1.0,
+                                        proposed
+                                    );
+                                    const usedW = action.used_weight || bestWeights.peak;
+                                    proposedSummaryParts.push(`peak weight: ${usedW.toFixed(2)} → ${proposed.toFixed(2)}, +${action.extra_adaptive_cycles || 0} cycles`);
+                                }
+                                if (action.action === 'boost_early_rise' && action.early_rise_boost) {
+                                    const proposed = action.early_rise_boost;
+                                    directive.options.earlyRiseBoostOverride = Math.max(
+                                        directive.options.earlyRiseBoostOverride || 1.0,
+                                        proposed
+                                    );
+                                    if (action.fit_mode) directive.options.fitModeOverride = action.fit_mode;
+                                    const usedW = action.used_weight || bestWeights.early;
+                                    proposedSummaryParts.push(`early-rise weight: ${usedW.toFixed(2)} → ${proposed.toFixed(2)}, mode=${action.fit_mode || 'default'}, +${action.extra_adaptive_cycles || 0} cycles`);
+                                }
+                                if (action.action === 'improve_decay') {
+                                    if (action.fit_mode) directive.options.fitModeOverride = action.fit_mode;
+                                    proposedSummaryParts.push(`decay: mode=${action.fit_mode || 'long'}, +${action.extra_adaptive_cycles || 0} cycles`);
+                                }
+                                if (action.extra_adaptive_cycles) {
+                                    directive.options.adaptiveMaxCyclesOverride = Math.max(
+                                        directive.options.adaptiveMaxCyclesOverride,
+                                        directive.options.adaptiveMaxCyclesOverride + action.extra_adaptive_cycles
+                                    );
+                                }
+                            }
+                            if (proposedActions.length > 0) {
+                                directive.label = 'proposed-solution correction profile';
+                            }
+                            directive._proposedSummary = proposedSummaryParts.join(' | ');
+
+                            // Flag errors related to doping, host, or annealing temperature
+                            // so the countdown gives 60s for the user to adjust settings.
+                            const recText = recommendationText;
+                            directive._needsUserReview = wantsHost
+                                || recText.includes('doping') || recText.includes('composition')
+                                || recText.includes('anneal') || recText.includes('temperature')
+                                || codeIs(['MISSING_DOPING', 'INVALID_DOPING']);
 
                             return directive;
                         };
 
                         if (shouldRetry(runResult)) {
                             const firstCodes = extractCodes(runResult);
+                            qualityProfile._escalationCount = 0; // Reset escalation for this emission
                             appendFitLiveLog(
                                 `Auto-retry triggered for ${item.emission} nm (R²=${(runResult?.r2 ?? 0).toFixed(5)}, code=${firstCodes.effective}${firstCodes.legacy && firstCodes.legacy !== firstCodes.effective ? `, legacy=${firstCodes.legacy}` : ''}).`
                             );
 
-                            const maxRetryAttempts = Math.max(4, Math.min(12, qualityProfile.retryCycles));
+                            const userMaxRetries = parseInt(safeGetElement('maxRetriesInput')?.value, 10);
+                            const maxRetryAttempts = Math.max(4, Math.min(25, Number.isFinite(userMaxRetries) ? userMaxRetries : qualityProfile.retryCycles));
                             const seenSignatures = new Set();
                             let previousSignature = signatureOf(runResult);
                             seenSignatures.add(previousSignature);
 
                             for (let attempt = 1; attempt <= maxRetryAttempts; attempt++) {
+                                console.log(`Retry ${attempt}/${maxRetryAttempts} started.`);
                                 if (multiFitCancelRequested) {
                                     const abortErr = new Error('Multi-channel sequence cancelled by user.');
                                     abortErr.name = 'AbortError';
@@ -5421,8 +5529,114 @@
                                 }
 
                                 const retry = buildRetryDirective(bestResult, attempt);
-                                appendFitLiveLog(`Retry ${attempt}/${maxRetryAttempts} for ${item.emission} nm with ${retry.label}.`);
-                                appendFitLiveLog(`Tuned values: peak weight = ${retry.options.peakWindowBoostOverride ?? 'default'}, early-rise weight = ${retry.options.earlyRiseBoostOverride ?? 'default'}, adaptive cycles = ${retry.options.adaptiveMaxCyclesOverride ?? 'default'}`);
+                                console.log(`Retry directive:`, retry);
+
+                                // Default undefined overrides to quality profile values before perturbation
+                                if (retry.options.peakWindowBoostOverride == null || !Number.isFinite(retry.options.peakWindowBoostOverride)) {
+                                    retry.options.peakWindowBoostOverride = qualityProfile.peakBoost || 1.27;
+                                }
+                                if (retry.options.earlyRiseBoostOverride == null || !Number.isFinite(retry.options.earlyRiseBoostOverride)) {
+                                    retry.options.earlyRiseBoostOverride = qualityProfile.earlyBoost || 1.3;
+                                }
+
+                                // Perturbation strategy: explore AROUND the best-producing weights,
+                                // not monotonically increasing. Use bestWeights as center.
+                                const hasProposedActions = !!(retry._proposedSummary);
+                                const escCount = qualityProfile._escalationCount || 0;
+                                if (!hasProposedActions) {
+                                    // When no backend proposals, perturb around bestWeights
+                                    const perturbRange = 0.1 + 0.05 * escCount;
+                                    retry.options.peakWindowBoostOverride = Math.min(10.0, Math.max(1.0,
+                                        bestWeights.peak + (Math.random() * 2 - 1) * perturbRange * bestWeights.peak));
+                                    retry.options.earlyRiseBoostOverride = Math.min(10.0, Math.max(1.0,
+                                        bestWeights.early + (Math.random() * 2 - 1) * perturbRange * bestWeights.early));
+                                } else {
+                                    // With backend proposals: use the proposed values but apply
+                                    // a small exploration jitter (±5%) so we don't repeat identical attempts
+                                    if (attempt > 1) {
+                                        const jitter = 0.03 * escCount + 0.02;
+                                        retry.options.peakWindowBoostOverride = Math.min(10.0, Math.max(1.0,
+                                            retry.options.peakWindowBoostOverride * (1 + (Math.random() * 2 - 1) * jitter)));
+                                        retry.options.earlyRiseBoostOverride = Math.min(10.0, Math.max(1.0,
+                                            retry.options.earlyRiseBoostOverride * (1 + (Math.random() * 2 - 1) * jitter)));
+                                    }
+                                }
+                                retry.options.adaptiveMaxCyclesOverride = Math.min(50, retry.options.adaptiveMaxCyclesOverride + attempt);
+
+                                const fmtOverride = (v) => (typeof v === 'number' && Number.isFinite(v)) ? v.toFixed(3) : 'default';
+
+                                // ── Countdown with proposed values & skip button ──
+                                // Extend to 60s for doping/host/annealing errors so user can adjust settings
+                                const needsReview = retry._needsUserReview === true;
+                                const countdownSeconds = needsReview ? 60 : 10;
+                                let skipRetry = false;
+
+                                // Log: first show the backend-proposed solution (matches troubleshooting panel)
+                                appendFitLiveLog(`─── Retry ${attempt}/${maxRetryAttempts} for ${item.emission} nm using ${retry.label} ───`);
+                                if (retry._proposedSummary) {
+                                    appendFitLiveLog(`Backend recommendation: ${retry._proposedSummary}`);
+                                }
+                                // Log: then show the ACTUAL values that will be sent (after all overrides)
+                                const actualSummary = `peak weight = ${fmtOverride(retry.options.peakWindowBoostOverride)}, ` +
+                                    `early-rise weight = ${fmtOverride(retry.options.earlyRiseBoostOverride)}, ` +
+                                    `adaptive cycles = ${retry.options.adaptiveMaxCyclesOverride ?? 'default'}, ` +
+                                    `mode = ${retry.options.fitModeOverride || 'default'}`;
+                                appendFitLiveLog(`Actual values for this retry: ${actualSummary}`);
+
+                                // Log a warning for user-review errors so the user knows to check settings
+                                if (needsReview) {
+                                    appendFitLiveLog(`⚠️ Error may relate to doping, host, or annealing temperature. 60s pause for you to review settings.`);
+                                }
+
+                                // Create countdown UI in live log
+                                const logEl = safeGetElement('fitLiveLog');
+                                const countdownRow = document.createElement('div');
+                                countdownRow.style.cssText = needsReview
+                                    ? 'padding:8px 10px; margin:4px 0; background:#fee2e2; border:2px solid #dc2626; border-radius:6px; display:flex; align-items:center; gap:10px; font-size:12px; color:#991b1b;'
+                                    : 'padding:6px 8px; margin:4px 0; background:#fef3c7; border:1px solid #f59e0b; border-radius:6px; display:flex; align-items:center; gap:10px; font-size:12px; color:#92400e;';
+                                const countdownText = document.createElement('span');
+                                countdownText.style.fontWeight = '600';
+                                countdownText.textContent = `Starting in ${countdownSeconds}s...`;
+                                const skipBtn = document.createElement('button');
+                                skipBtn.textContent = 'Stop & Skip to Next Emission';
+                                skipBtn.style.cssText = 'padding:4px 10px; background:#ef4444; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:700;';
+                                countdownRow.appendChild(countdownText);
+                                countdownRow.appendChild(skipBtn);
+                                if (logEl) {
+                                    logEl.appendChild(countdownRow);
+                                    logEl.scrollTop = logEl.scrollHeight;
+                                }
+
+                                // Countdown promise: resolves to 'skip' or 'proceed'
+                                const countdownResult = await new Promise((resolve) => {
+                                    let remaining = countdownSeconds;
+                                    skipBtn.addEventListener('click', () => resolve('skip'), { once: true });
+                                    const timer = setInterval(() => {
+                                        remaining--;
+                                        if (remaining <= 0) {
+                                            clearInterval(timer);
+                                            resolve('proceed');
+                                        } else {
+                                            countdownText.textContent = `Starting in ${remaining}s...`;
+                                        }
+                                        if (multiFitCancelRequested) {
+                                            clearInterval(timer);
+                                            resolve('skip');
+                                        }
+                                    }, 1000);
+                                });
+
+                                // Clean up countdown UI
+                                if (countdownRow.parentNode) countdownRow.parentNode.removeChild(countdownRow);
+
+                                if (countdownResult === 'skip') {
+                                    appendFitLiveLog(`⏭ User skipped retry for ${item.emission} nm. Moving to next emission.`);
+                                    skipRetry = true;
+                                    break;
+                                }
+
+                                appendFitLiveLog(`Proceeding with retry ${attempt}/${maxRetryAttempts}...`);
+                                
                                 const retryResult = await window.fitData({
                                     internalRun: true,
                                     sourceData: item.data,
@@ -5435,68 +5649,97 @@
                                     ...retry.options,
                                 });
 
-                                if (retryResult && typeof retryResult.r2 === 'number') {
-                                    const retryCodes = extractCodes(retryResult);
-                                    appendFitLiveLog(`Retry result for ${item.emission} nm: R²=${retryResult.r2.toFixed(5)} (code=${retryCodes.effective}).`);
-
-                                    if (scoreResult(retryResult, item.emission) >= scoreResult(bestResult, item.emission)) {
-                                        bestResult = retryResult;
-                                    }
-
-                                    if (isSolved(bestResult)) {
-                                        appendFitLiveLog(`${item.emission} nm reached solved criteria; continuing to next emission.`);
-                                        break;
-                                    }
-
-                                    const sig = signatureOf(retryResult);
-                                    if (sig === previousSignature || seenSignatures.has(sig)) {
-                                        appendFitLiveLog(`${item.emission} nm produced the same fitting result again; stopping retries and continuing.`);
-                                            // Advanced troubleshooting: peak time and amplitude difference check
-                                            const measuredPeakTime = retryResult?.timing_metrics?.measured?.peak_time ?? retryResult?.timing_metrics?.experimental?.peak_time ?? 0;
-                                            const fittedPeakTime = retryResult?.timing_metrics?.fitted?.peak_time ?? 0;
-                                            const peakTimeDiff = Math.abs(fittedPeakTime - measuredPeakTime);
-                                            // Amplitude: use measured and fitted intensity arrays
-                                            const measuredIntensity = Array.isArray(retryResult?.measured_intensity) ? retryResult.measured_intensity : [];
-                                            const fittedIntensity = Array.isArray(retryResult?.fitted_intensity) ? retryResult.fitted_intensity : [];
-                                            const measuredPeakAmp = measuredIntensity.length ? Math.max(...measuredIntensity) : 0;
-                                            const fittedPeakAmp = fittedIntensity.length ? Math.max(...fittedIntensity) : 0;
-                                            const peakAmpDiff = Math.abs(fittedPeakAmp - measuredPeakAmp);
-                                            let logMsg = '';
-                                            if (peakTimeDiff > 0.1) {
-                                                logMsg += `Peak time difference (${peakTimeDiff.toFixed(3)}) > 0.1. `;
-                                            }
-                                            if (peakAmpDiff > 0.1) {
-                                                logMsg += `Peak amplitude difference (${peakAmpDiff.toFixed(3)}) > 0.1. `;
-                                            }
-                                            if (logMsg) {
-                                                appendFitLiveLog(`Advanced troubleshooting: ${logMsg}Applying extra strategies.`);
-                                                // Increase peak weight for next fit (if possible)
-                                                if (!retry.options.peakWindowBoostOverride) {
-                                                    retry.options.peakWindowBoostOverride = Math.min(2.5, (retry.options.peakWindowBoostOverride || 1.5) + 0.5);
-                                                    appendFitLiveLog(`Peak weight increased to ${retry.options.peakWindowBoostOverride}.`);
-                                                }
-                                                // Show recommendations
-                                                appendFitLiveLog(`Recommendations: Check detector saturation, normalization, and consider smoothing data. Manual initialization may help.`);
-                                                // Optionally, trigger another fit with updated options (commented for safety)
-                                                // const advancedResult = await window.fitData({ ...retry.options });
-                                                // appendFitLiveLog(`Advanced fit result: R²=${advancedResult.r2.toFixed(5)}.`);
-                                            }
-                                        break;
-                                    }
-                                    seenSignatures.add(sig);
-                                    previousSignature = sig;
+                                if (!retryResult || !Number.isFinite(retryResult.r2)) {
+                                    appendFitLiveLog(`Invalid result encountered; skipping retry.`);
+                                    continue;
                                 }
-                            }
 
+                                const improvementThreshold = 1e-6;
+                                if (Math.abs(retryResult.r2 - bestResult.r2) < improvementThreshold) {
+                                    // Instead of stopping: escalate strategy for next attempt
+                                    appendFitLiveLog(`${item.emission} nm produced negligible improvement; escalating strategy.`);
+                                    // Force more aggressive settings for next iteration
+                                    qualityProfile._escalationCount = (qualityProfile._escalationCount || 0) + 1;
+                                    continue;
+                                }
+                                if (scoreResult(retryResult, item.emission) >= scoreResult(bestResult, item.emission)) {
+                                    bestResult = retryResult;
+                                    // Update bestWeights to reflect the weights that produced this improvement
+                                    bestWeights = {
+                                        peak: retryResult?.diagnostics?.peak_window_boost || bestWeights.peak,
+                                        early: retryResult?.diagnostics?.early_rise_boost || bestWeights.early,
+                                    };
+                                    qualityProfile._escalationCount = 0; // Reset escalation on improvement
+                                }
+
+                                if (isSolved(bestResult)) {
+                                    appendFitLiveLog(`${item.emission} nm reached solved criteria; continuing to next emission.`);
+                                    break;
+                                }
+
+                                const sig = signatureOf(retryResult);
+                                console.log(`Current signature: ${sig}, Previous signature: ${previousSignature}`);
+                                if (seenSignatures.has(sig)) {
+                                    // Same exact signature seen before - but don't stop, escalate
+                                    const escalations = (qualityProfile._escalationCount || 0);
+                                    if (escalations >= 3) {
+                                        appendFitLiveLog(`${item.emission} nm produced the same fitting result ${escalations} times; stopping retries.`);
+                                        break;
+                                    }
+                                    appendFitLiveLog(`${item.emission} nm same result detected; changing strategy (escalation ${escalations + 1}/3).`);
+                                    qualityProfile._escalationCount = escalations + 1;
+                                    continue;
+                                }
+                                seenSignatures.add(sig);
+                                previousSignature = sig;
+                            
+                            }
                             if (!isSolved(bestResult)) {
                                 appendFitLiveLog(
-                                    `${item.emission} nm remains below solved criteria after retries ` +
+                                    `${item.emission} nm remains below solved criteria after ${maxRetryAttempts} retries ` +
                                     `(best R²=${bestR2(bestResult).toFixed(5)}, target=${minAcceptR2.toFixed(2)}). Continuing sequence with best available fit.`
                                 );
                             }
                         }
 
                         const finalResult = bestResult;
+
+                        // Mark the deposit entry corresponding to the best result.
+                        // Find all deposits for this emission from this retry batch and
+                        // set isBestFit on the one matching bestResult's R².
+                        if (finalResult && typeof finalResult.r2 === 'number') {
+                            const bestR2Val = finalResult.r2;
+                            const emStr = String(item.emission);
+                            let bestIdx = -1;
+                            let bestScore = -Infinity;
+                            for (let di = plotDeposits.length - 1; di >= 0; di--) {
+                                const dep = plotDeposits[di];
+                                if (String(dep.payloadSummary?.emission) !== emStr) break;
+                                // Clear any previous best-fit marks for this emission batch
+                                dep.isBestFit = false;
+                                const depR2 = typeof dep.r2 === 'number' ? dep.r2 : -Infinity;
+                                if (depR2 >= bestScore) {
+                                    bestScore = depR2;
+                                    bestIdx = di;
+                                }
+                            }
+                            if (bestIdx >= 0) {
+                                plotDeposits[bestIdx].isBestFit = true;
+                                // Inject the BEST FIT badge into stored resultsHtml
+                                const badgeHtml = '<div style="margin:8px 0; padding:8px 12px; background:#dcfce7; border:2px solid #16a34a; border-radius:6px; text-align:center; font-size:14px; font-weight:800; color:#166534;">★ BEST FIT ★</div>';
+                                if (plotDeposits[bestIdx].resultsHtml && !plotDeposits[bestIdx].resultsHtml.includes('BEST FIT')) {
+                                    plotDeposits[bestIdx].resultsHtml = plotDeposits[bestIdx].resultsHtml.replace(
+                                        /(<div style="margin:18px[^>]*>Run:[^<]*<\/div>)/,
+                                        '$1' + badgeHtml
+                                    );
+                                }
+                                savePlotDeposits();
+                                activeDepositIndex = bestIdx;
+                                renderDepositList();
+                                window.openDepositedPlot(bestIdx);
+                                appendFitLiveLog(`Best fit for ${item.emission} nm selected: deposit #${bestIdx + 1} (R²=${bestR2Val.toFixed(6)}).`);
+                            }
+                        }
 
                         // Carry-forward defaults must come only from the selected best fit,
                         // never from intermediate lower-quality retry attempts.
@@ -5620,18 +5863,32 @@
                 const isLongMode = fitMode === 'long';
                 const isSingleMode = getActiveUploadMode() === 'single' && !internalRun;
                 const emissionProfile = getMultiChannelQualityProfile(selectedEmission);
+
+                // Read user-set weights for the current emission from the weight inputs.
+                // These always take priority over toggle-based defaults.
+                const userPeakWeight = parseFloat(safeGetElement('peakWeightInput')?.value);
+                const userEarlyWeight = parseFloat(safeGetElement('earlyWeightInput')?.value);
+                const hasPeakWeight = Number.isFinite(userPeakWeight) && userPeakWeight > 1.0;
+                const hasEarlyWeight = Number.isFinite(userEarlyWeight) && userEarlyWeight > 1.0;
+
                 const peakEnhanceEnabled = options.peakWindowBoostOverride != null
                     ? true
-                    : (isSingleMode && safeGetElement('singlePeakEnhanceToggle')?.checked === true);
+                    : (hasPeakWeight || (isSingleMode && safeGetElement('singlePeakEnhanceToggle')?.checked === true));
                 const peakWindowBoost = options.peakWindowBoostOverride != null
-                    ? Math.min(2.5, Math.max(1.0, Number(options.peakWindowBoostOverride)))
-                    : (peakEnhanceEnabled ? Math.max(1.28, emissionProfile.peakBoost) : 1.0);
+                    ? Math.min(10.0, Math.max(1.0, Number(options.peakWindowBoostOverride)))
+                    : (hasPeakWeight ? Math.min(10.0, userPeakWeight)
+                       : (peakEnhanceEnabled ? Math.max(1.28, emissionProfile.peakBoost) : 1.0));
                 const earlyEnhanceEnabled = options.earlyRiseBoostOverride != null
                     ? true
-                    : (isSingleMode && safeGetElement('singleEarlyEnhanceToggle')?.checked === true);
-                const earlyRiseBoost = options.earlyRiseBoostOverride != null
-                    ? Math.min(2.5, Math.max(1.0, Number(options.earlyRiseBoostOverride)))
-                    : (earlyEnhanceEnabled ? Math.max(1.26, emissionProfile.earlyBoost) : 1.0);
+                    : (hasEarlyWeight || (isSingleMode && safeGetElement('singleEarlyEnhanceToggle')?.checked === true));
+                let earlyRiseBoost = options.earlyRiseBoostOverride != null
+                    ? Math.min(10.0, Math.max(1.0, Number(options.earlyRiseBoostOverride)))
+                    : (hasEarlyWeight ? Math.min(10.0, userEarlyWeight)
+                       : (earlyEnhanceEnabled ? Math.max(1.26, Number(emissionProfile.earlyBoost) || 1.26) : 1.0));
+                if (isNaN(earlyRiseBoost) || earlyRiseBoost == null) {
+                    console.warn("Invalid earlyRiseBoost value detected. Defaulting to 1.0.");
+                    earlyRiseBoost = 1.0;
+                }
                 const targetR2InputVal = safeGetElement('targetR2Input')?.value;
                 const adaptiveCyclesInputVal = safeGetElement('adaptiveMaxCyclesInput')?.value;
                 const targetR2Raw = options.targetR2Override != null ? options.targetR2Override : (targetR2InputVal || '0.9995');
@@ -5641,7 +5898,7 @@
                     Math.max(0.90, parseFloat(targetR2Raw))
                 );
                 const adaptiveMaxCycles = Math.min(
-                    20,
+                    50,
                     Math.max(1, parseInt(adaptiveCyclesRaw, 10))
                 );
                 const fitConfig = {
@@ -5676,6 +5933,14 @@
                     use_775_calibration: use775Calibration,
                     peak_window_boost: peakWindowBoost,
                     early_rise_boost: earlyRiseBoost,
+                    // Use per-emission tolerances: for the emission being fitted,
+                    // look up stored values; fall back to DOM inputs for single-channel.
+                    peak_tolerance: (emissionDefaults[selectedEmission]?.tolerances?.peak)
+                        ?? (parseFloat(document.getElementById('errPeak')?.value) || 0.01),
+                    rise_tolerance: (emissionDefaults[selectedEmission]?.tolerances?.rise)
+                        ?? (parseFloat(document.getElementById('errRise')?.value) || 0.01),
+                    decay_tolerance: (emissionDefaults[selectedEmission]?.tolerances?.decay)
+                        ?? (parseFloat(document.getElementById('errDecay')?.value) || 0.01),
                     time_unit: safeGetElement('timeUnit')?.value || 'ms',
                     pulse_width_us: parseFloat(safeGetElement('pulseWidthUs')?.value || '400'),
                     lit_params: {
@@ -5815,6 +6080,22 @@
                     typeof tmMeasured.decay_tau_1e === 'number' && typeof tmFitted.decay_tau_1e === 'number'
                 ) ? Math.abs(tmFitted.decay_tau_1e - tmMeasured.decay_tau_1e) : null;
 
+                // Ratio errors: these match what the backend tolerance system actually checks
+                const tolAchieved = diagnostics.tolerance_achieved || {};
+                const tolTargets = diagnostics.tolerance_targets || {};
+                const peakRatioErr = tolAchieved.peak;
+                const riseRatioErr = tolAchieved.rise;
+                const decayRatioErr = tolAchieved.decay;
+                const peakTolTarget = tolTargets.peak;
+                const riseTolTarget = tolTargets.rise;
+                const decayTolTarget = tolTargets.decay;
+                const tolStatus = (achieved, target) => {
+                    if (achieved == null || target == null) return '';
+                    return achieved <= target
+                        ? ' <span style="color:#16a34a;font-weight:700;">✓</span>'
+                        : ` <span style="color:#dc2626;font-weight:700;">✗ (target: ${fmtNum(target, 4)})</span>`;
+                };
+
                 // Highlight transferred parameters
                 const transferredOde = window.transferredParams?.ode || {};
                 const transferredEmission = window.transferredParams?.emission || '';
@@ -5864,6 +6145,22 @@
                 const troubleshootingAdvice = (troubleshooting.recommendations || [])
                     .map(line => `<li style="margin-bottom:3px;">${line}</li>`)
                     .join('');
+                const proposedActions = troubleshooting.proposed_actions || [];
+                const proposedActionsHtml = proposedActions.length > 0
+                    ? `<div style="margin-top:6px;"><strong>Proposed Solution for Next Fit:</strong></div>
+                       <ul style="margin:4px 0 0 18px; padding:0;">${proposedActions.map(a => {
+                           if (a.code === 'FIT-E41') {
+                               const usedW = a.used_weight != null ? a.used_weight.toFixed(2) : '?';
+                               return `<li style="margin-bottom:3px;">Peak weight: <strong>${usedW} &rarr; ${(a.peak_window_boost || 1.3).toFixed(2)}</strong>, add <strong>${a.extra_adaptive_cycles || 2}</strong> adaptive cycles.</li>`;
+                           }
+                           if (a.code === 'FIT-E42') {
+                               const usedW = a.used_weight != null ? a.used_weight.toFixed(2) : '?';
+                               return `<li style="margin-bottom:3px;">Early-rise weight: <strong>${usedW} &rarr; ${(a.early_rise_boost || 1.3).toFixed(2)}</strong>, switch to <strong>${a.fit_mode || 'long'}</strong> mode, add <strong>${a.extra_adaptive_cycles || 3}</strong> adaptive cycles.</li>`;
+                           }
+                           if (a.code === 'FIT-E43') return `<li style="margin-bottom:3px;">Switch to <strong>${a.fit_mode || 'long'}</strong> mode, add <strong>${a.extra_adaptive_cycles || 3}</strong> adaptive cycles for tail fitting.</li>`;
+                           return `<li style="margin-bottom:3px;">${JSON.stringify(a)}</li>`;
+                       }).join('')}</ul>`
+                    : '';
                 const canOfferPeakBoost = getActiveUploadMode() === 'single' && troubleshooting.dominant_error_region === 'peak window mismatch';
                 const canOfferEarlyBoost = getActiveUploadMode() === 'single' && troubleshooting.dominant_error_region === 'early rise mismatch';
                 const peakBoostCta = canOfferPeakBoost
@@ -5882,15 +6179,21 @@
                         <ul style="margin:4px 0 0 18px; padding:0;">${troubleshootingChanges || '<li>No changes logged.</li>'}</ul>
                         <div style="margin-top:6px;"><strong>Recommendations:</strong></div>
                         <ul style="margin:4px 0 0 18px; padding:0;">${troubleshootingAdvice || '<li>No additional recommendations.</li>'}</ul>
+                        ${proposedActionsHtml}
                         ${peakBoostCta}${earlyBoostCta}
                     </div>`;
 
                 // Demarcation between runs of different wavelengths and folders
-                const runDemarcation = `<div style="margin:18px 0 12px 0; border-top:2px solid #6366f1; border-bottom:2px solid #6366f1; background:#eef2ff; padding:6px 0; text-align:center; font-size:13px; color:#3730a3; font-weight:700;">Run: ${selectedEmission} nm | Folder: ${diagnostics.folder_name || 'N/A'}</div>`;
+                const isBestFitResult = fittingResults._isBestFit === true;
+                const bestFitBadge = isBestFitResult
+                    ? '<div style="margin:8px 0; padding:8px 12px; background:#dcfce7; border:2px solid #16a34a; border-radius:6px; text-align:center; font-size:14px; font-weight:800; color:#166534;">★ BEST FIT ★</div>'
+                    : '';
+                const runDemarcation = `<div style="margin:18px 0 12px 0; border-top:2px solid ${isBestFitResult ? '#16a34a' : '#6366f1'}; border-bottom:2px solid ${isBestFitResult ? '#16a34a' : '#6366f1'}; background:${isBestFitResult ? '#dcfce7' : '#eef2ff'}; padding:6px 0; text-align:center; font-size:13px; color:${isBestFitResult ? '#166534' : '#3730a3'}; font-weight:700;">Run: ${selectedEmission} nm | Folder: ${diagnostics.folder_name || 'N/A'}${isBestFitResult ? ' | ★ BEST FIT' : ''}</div>`;
 
                 setFitResultsHtml(`
                     ${runDemarcation}
-                    <div class="result-item"><span class="result-label">Fit Quality (R²):</span> <span class="result-value">${fmtNum(fittingResults.r2, 6)} <span class="quality-indicator ${qualityClass}">${qualityText}</span></span></div>
+                    ${bestFitBadge}
+                    <div class="result-item"><span class="result-label" style="${isBestFitResult ? 'font-weight:800;' : ''}">Fit Quality (R²):</span> <span class="result-value" style="${isBestFitResult ? 'font-weight:800; font-size:14px;' : ''}">${fmtNum(fittingResults.r2, 6)} <span class="quality-indicator ${qualityClass}">${qualityText}</span></span></div>
                     <div class="result-item"><span class="result-label">Elapsed Time:</span> <span class="result-value">${fmtNum(diagnostics.elapsed_min, 3)} min</span></div>
                     <div class="result-item"><span class="result-label">Fit Quality Mode:</span> <span class="result-value">${diagnostics.selected_quality || diagnostics.fit_quality || 'N/A'} (from ${diagnostics.selected_from || diagnostics.fit_quality || 'N/A'})</span></div>
                     <div class="result-item"><span class="result-label">All-Point Optimization:</span> <span class="result-value">${diagnostics.optimize_all_points ? 'Yes' : 'No'}</span></div>
@@ -5915,9 +6218,12 @@
                     <div class="result-item"><span class="result-label">Fitted Rise τ (10-90%):</span> <span class="result-value">${fmtNum(tmFitted.rise_time_10_90, 4)}</span></div>
                     <div class="result-item"><span class="result-label" title="Time where the decay falls to 1/e ≈ 36.8% of peak">Measured Decay τ (1/e):</span> <span class="result-value">${fmtNum(tmMeasured.decay_tau_1e, 4)}</span></div>
                     <div class="result-item"><span class="result-label" title="Time where the fitted decay falls to 1/e ≈ 36.8% of peak">Fitted Decay τ (1/e):</span> <span class="result-value">${fmtNum(tmFitted.decay_tau_1e, 4)}</span></div>
-                    <div class="result-item"><span class="result-label" title="Absolute difference between fitted peak time and measured peak time">Peak Time Error:</span> <span class="result-value">${fmtNum(peakTimeErr, 4)}</span></div>
-                    <div class="result-item"><span class="result-label">Rise Time Error:</span> <span class="result-value">${fmtNum(riseErr, 4)}</span></div>
-                    <div class="result-item"><span class="result-label">Decay τ Error:</span> <span class="result-value">${fmtNum(decayErr, 4)}</span></div>
+                    <div class="result-item"><span class="result-label" title="Absolute difference between fitted peak time and measured peak time">Peak Time Error (abs):</span> <span class="result-value">${fmtNum(peakTimeErr, 4)}</span></div>
+                    <div class="result-item"><span class="result-label" title="Fractional peak error used by tolerance check">Peak Time Error (ratio):</span> <span class="result-value">${fmtNum(peakRatioErr, 4)}${tolStatus(peakRatioErr, peakTolTarget)}</span></div>
+                    <div class="result-item"><span class="result-label">Rise Time Error (abs):</span> <span class="result-value">${fmtNum(riseErr, 4)}</span></div>
+                    <div class="result-item"><span class="result-label" title="Fractional rise error used by tolerance check">Rise Time Error (ratio):</span> <span class="result-value">${fmtNum(riseRatioErr, 4)}${tolStatus(riseRatioErr, riseTolTarget)}</span></div>
+                    <div class="result-item"><span class="result-label">Decay τ Error (abs):</span> <span class="result-value">${fmtNum(decayErr, 4)}</span></div>
+                    <div class="result-item"><span class="result-label" title="Fractional decay error used by tolerance check">Decay τ Error (ratio):</span> <span class="result-value">${fmtNum(decayRatioErr, 4)}${tolStatus(decayRatioErr, decayTolTarget)}</span></div>
 
                     <div style="margin-top:12px; margin-bottom:6px; font-weight:700; color:#374151;">ODE Parameters Used (units shown per parameter)</div>
                     ${paramsRows || '<div class="result-item"><span class="result-label">Parameters</span><span class="result-value">N/A</span></div>'}

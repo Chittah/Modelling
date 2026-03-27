@@ -656,8 +656,8 @@ def run_fitting(time_ms, intensity, pulse_us,
     y0 = [doping_yb/100, 0, doping_tm/100, 0, 0, 0, 0, 0, 0, 0, 0] #initial conditions set from doping conc
     emission_key_s = str(emission_key)
     tm_pct = float(doping_tm) if np.isfinite(doping_tm) else 0.0
-    peak_window_boost = float(np.clip(float(peak_window_boost), 1.0, 2.5))
-    early_rise_boost = float(np.clip(float(early_rise_boost), 1.0, 2.5))
+    peak_window_boost = float(np.clip(float(peak_window_boost), 1.0, 10.0))
+    early_rise_boost = float(np.clip(float(early_rise_boost), 1.0, 10.0))
 
     def check_cancel():
         if callable(cancel_checker) and cancel_checker():
@@ -1208,23 +1208,59 @@ def run_fitting(time_ms, intensity, pulse_us,
             final_sse = cand_sse
 
     # ── Adaptive R² refinement ──────────────────────────────────────────────────
-    # If R² < 0.9999 after the L2 polish passes, diagnose which region (early
-    # rise, peak window, tail) carries the most residual error, proportionally
-    # boost the weights on that region, and re-run a local refinement.  Repeats
-    # up to MAX_ADAPT_CYCLES times; stops early if no SSE improvement is made so
-    # we never overfit one region at the expense of another.
+    # If R² < target OR any timing tolerance is exceeded after the L2 polish
+    # passes, diagnose which region (early rise, peak window, tail) carries the
+    # most residual error, proportionally boost the weights on that region, and
+    # re-run a local refinement.  Repeats up to MAX_ADAPT_CYCLES times; stops
+    # early if no SSE improvement is made so we never overfit one region at the
+    # expense of another.
     R2_TARGET = float(np.clip(float(target_r2), 0.0, 0.999995))
-    MAX_ADAPT_CYCLES = int(np.clip(int(adaptive_max_cycles), 1, 20))
+    MAX_ADAPT_CYCLES = int(np.clip(int(adaptive_max_cycles), 1, 50))
     adapt_cycles_done = 0
+    improvement_threshold = 1e-6  # Minimum relative SSE improvement to continue adaptive cycles
+
+    def _compute_tolerance_errors(fitted_y):
+        """Return (peak_err, rise_err, decay_err) as fractional ratio errors."""
+        meas_m = compute_trace_metrics(time_ms, intensity)
+        fit_m = compute_trace_metrics(time_ms, fitted_y)
+        p_err = r_err = d_err = None
+        if meas_m.get("peak_time") is not None and fit_m.get("peak_time") is not None:
+            p_err = abs(fit_m["peak_time"] - meas_m["peak_time"]) / max(abs(meas_m["peak_time"]), 1e-12)
+        if meas_m.get("rise_time_10_90") is not None and fit_m.get("rise_time_10_90") is not None:
+            r_err = abs(fit_m["rise_time_10_90"] - meas_m["rise_time_10_90"]) / max(abs(meas_m["rise_time_10_90"]), 1e-12)
+        if meas_m.get("decay_tau_1e") is not None and fit_m.get("decay_tau_1e") is not None:
+            d_err = abs(fit_m["decay_tau_1e"] - meas_m["decay_tau_1e"]) / max(abs(meas_m["decay_tau_1e"]), 1e-12)
+        return p_err, r_err, d_err
+
+    def _tolerances_exceeded(fitted_y):
+        """True if any timing tolerance is not yet satisfied."""
+        p_err, r_err, d_err = _compute_tolerance_errors(fitted_y)
+        if p_err is not None and p_err > peak_tolerance:
+            return True
+        if r_err is not None and r_err > rise_tolerance:
+            return True
+        if d_err is not None and d_err > decay_tolerance:
+            return True
+        return False
+
+    tol_exceeded = _tolerances_exceeded(final_y)
+    r2_not_met = (1.0 - final_sse / denom) < R2_TARGET
+    p_e, r_e, d_e = _compute_tolerance_errors(final_y)
     report_progress(
         phase="adaptive_refine",
         adaptive_completed_cycles=0,
         adaptive_max_cycles=MAX_ADAPT_CYCLES,
         current_r2=float(1.0 - final_sse / denom),
-        message=f"Adaptive refinement started (max {MAX_ADAPT_CYCLES} cycles).",
+        tolerances_exceeded=bool(tol_exceeded),
+        tolerance_errors={"peak": p_e, "rise": r_e, "decay": d_e},
+        message=f"Adaptive refinement started (max {MAX_ADAPT_CYCLES} cycles). "
+                f"Tolerances met: {not tol_exceeded}.",
     )
 
-    while (1.0 - final_sse / denom) < R2_TARGET and adapt_cycles_done < MAX_ADAPT_CYCLES:
+    consecutive_no_improve = 0
+    MAX_NO_IMPROVE = 3  # Allow up to 3 strategy changes before giving up
+
+    while (r2_not_met or tol_exceeded) and adapt_cycles_done < MAX_ADAPT_CYCLES:
         check_cancel()
         adapt_cycles_done += 1
 
@@ -1245,11 +1281,28 @@ def run_fitting(time_ms, intensity, pulse_us,
         frac_peak  = peak_err  / total_err
         frac_tail  = tail_err  / total_err
 
-        # Boost grows with each cycle; capped at 3× to stay physical
-        boost   = min(3.0, 1.0 + 0.6 * adapt_cycles_done)
+        # Boost grows with each cycle; increase more aggressively after
+        # consecutive no-improvement cycles to escape local minima
+        boost_extra = 0.3 * consecutive_no_improve
+        boost   = min(5.0, 1.0 + 0.6 * adapt_cycles_done + boost_extra)
         w_early = 1.0 + boost * frac_early
         w_peak  = 1.0 + boost * frac_peak
         w_tail  = 1.0 + boost * frac_tail
+
+        # On repeated no-improvement, shift focus to the worst tolerance region
+        if consecutive_no_improve > 0:
+            p_e_now, r_e_now, d_e_now = _compute_tolerance_errors(final_y)
+            tol_errors = [
+                ("early", p_e_now if p_e_now is not None else 0.0, peak_tolerance),
+                ("early", r_e_now if r_e_now is not None else 0.0, rise_tolerance),
+                ("tail",  d_e_now if d_e_now is not None else 0.0, decay_tolerance),
+            ]
+            # Find worst tolerance violation and boost its region
+            worst_tol = max(tol_errors, key=lambda x: x[1] / max(x[2], 1e-12))
+            if worst_tol[0] == "early":
+                w_early *= 1.0 + 0.5 * consecutive_no_improve
+            else:
+                w_tail *= 1.0 + 0.5 * consecutive_no_improve
 
         # ── Build spatially-varying weight array ──
         adapt_w = np.ones(n_tot, dtype=float)
@@ -1261,6 +1314,10 @@ def run_fitting(time_ms, intensity, pulse_us,
         adapt_w[peak_mask_a]  *= w_peak
         adapt_w[tail_mask_a]  *= w_tail
         adapt_sqrt_w = np.sqrt(adapt_w)
+
+        # Alternate loss function after consecutive no-improvement:
+        # soft_l1 is more robust to outliers and may find a different minimum
+        use_soft_l1 = consecutive_no_improve >= 2
 
         # Default-argument capture so each loop iteration gets its own binding
         def residual_adaptive(x_active,
@@ -1277,24 +1334,31 @@ def run_fitting(time_ms, intensity, pulse_us,
             tail = 0.45 * _w_tail * _tail_sqrt * (intensity - fitted)
             return np.concatenate([base, tail])
 
+        # Increase max function evaluations on retries
+        adapt_nfev = nfev_per_pass + consecutive_no_improve * 200
+
         res_adapt = least_squares(
             residual_adaptive,
             x0=best_active,
             bounds=(lower, upper),
             method="trf",
-            loss="linear",
-            max_nfev=nfev_per_pass,
+            loss="soft_l1" if use_soft_l1 else "linear",
+            f_scale=0.05 if use_soft_l1 else 1.0,
+            max_nfev=adapt_nfev,
         )
         check_cancel()
         polish_passes_done  += 1
         polish_nfev_total   += int(getattr(res_adapt, "nfev", 0) or 0)
 
-        if not res_adapt.success:
+        if not res_adapt.success and consecutive_no_improve >= MAX_NO_IMPROVE:
             break
         cand_full, cand_pulse_ms = unpack_active(res_adapt.x)
         cand_modeled, _ = simulate(cand_full, cand_pulse_ms, time_ms)
         if cand_modeled is None:
-            break
+            if consecutive_no_improve >= MAX_NO_IMPROVE:
+                break
+            consecutive_no_improve += 1
+            continue
         # Accept only when overall (unweighted) SSE improves — guards against
         # over-correcting one region at the expense of the rest.
         cand_y   = apply_weighted_scale(intensity, cand_modeled, ones_full)
@@ -1304,27 +1368,50 @@ def run_fitting(time_ms, intensity, pulse_us,
             best_full, best_pulse_ms = unpack_active(best_active)
             final_y        = cand_y
             final_sse      = cand_sse
+            consecutive_no_improve = 0  # Reset on improvement
+            tol_exceeded = _tolerances_exceeded(final_y)
+            r2_not_met = (1.0 - final_sse / denom) < R2_TARGET
+            p_e, r_e, d_e = _compute_tolerance_errors(final_y)
             report_progress(
                 phase="adaptive_refine",
                 adaptive_completed_cycles=adapt_cycles_done,
                 adaptive_max_cycles=MAX_ADAPT_CYCLES,
                 current_r2=float(1.0 - final_sse / denom),
+                tolerances_exceeded=bool(tol_exceeded),
+                tolerance_errors={"peak": p_e, "rise": r_e, "decay": d_e},
                 message=(
                     f"Adaptive loop {adapt_cycles_done}/{MAX_ADAPT_CYCLES} completed "
-                    f"(R2={1.0 - final_sse / denom:.6f})."
+                    f"(R2={1.0 - final_sse / denom:.6f}). "
+                    f"Tolerances met: {not tol_exceeded}."
                 ),
             )
         else:
-            report_progress(
-                phase="adaptive_refine",
-                adaptive_completed_cycles=adapt_cycles_done,
-                adaptive_max_cycles=MAX_ADAPT_CYCLES,
-                current_r2=float(1.0 - final_sse / denom),
-                message=(
-                    f"Adaptive loop {adapt_cycles_done}/{MAX_ADAPT_CYCLES} made no SSE improvement; stopping."
-                ),
-            )
-            break  # No improvement — stop to avoid diverging from physics
+            consecutive_no_improve += 1
+            strategy_desc = "soft_l1 loss" if use_soft_l1 else "boosted weights"
+            if consecutive_no_improve >= MAX_NO_IMPROVE:
+                report_progress(
+                    phase="adaptive_refine",
+                    adaptive_completed_cycles=adapt_cycles_done,
+                    adaptive_max_cycles=MAX_ADAPT_CYCLES,
+                    current_r2=float(1.0 - final_sse / denom),
+                    message=(
+                        f"Adaptive loop {adapt_cycles_done}/{MAX_ADAPT_CYCLES} made no improvement "
+                        f"after {consecutive_no_improve} strategy changes; stopping."
+                    ),
+                )
+                break
+            else:
+                report_progress(
+                    phase="adaptive_refine",
+                    adaptive_completed_cycles=adapt_cycles_done,
+                    adaptive_max_cycles=MAX_ADAPT_CYCLES,
+                    current_r2=float(1.0 - final_sse / denom),
+                    message=(
+                        f"Adaptive loop {adapt_cycles_done}/{MAX_ADAPT_CYCLES} no SSE improvement "
+                        f"with {strategy_desc}; changing strategy "
+                        f"({consecutive_no_improve}/{MAX_NO_IMPROVE} attempts)."
+                    ),
+                )
 
     final_r2 = 1.0 - final_sse / denom
 
@@ -1333,6 +1420,7 @@ def run_fitting(time_ms, intensity, pulse_us,
     ls_nfev = int(getattr(res_local, "nfev", 0) or 0)
     total_evals = de_nfev + ls_nfev + refine_nfev + polish_nfev_total
 
+    final_tol_p, final_tol_r, final_tol_d = _compute_tolerance_errors(final_y)
     diagnostics = {
         "fit_quality": fit_quality,
         "n_points_full": int(time_ms.size),
@@ -1361,6 +1449,17 @@ def run_fitting(time_ms, intensity, pulse_us,
         "adaptive_max_cycles": int(MAX_ADAPT_CYCLES),
         "peak_window_boost": float(peak_window_boost),
         "early_rise_boost": float(early_rise_boost),
+        "tolerance_targets": {
+            "peak": float(peak_tolerance),
+            "rise": float(rise_tolerance),
+            "decay": float(decay_tolerance),
+        },
+        "tolerance_achieved": {
+            "peak": final_tol_p,
+            "rise": final_tol_r,
+            "decay": final_tol_d,
+        },
+        "all_tolerances_met": not _tolerances_exceeded(final_y),
     }
     # Return the full 19-vector so the route handler can reference all param names uniformly.
     return final_y, best_full, final_sse, diagnostics
@@ -1716,26 +1815,25 @@ def fit():
         user_peak_weight = user_weights.get('peak')
         user_early_weight = user_weights.get('early')
 
-
-        # Override the requested boost values with user-saved weights
+        # Use the larger of payload value and saved value — the payload now
+        # carries the fresh UI input; the saved dict may lag behind the debounce.
         if user_peak_weight is not None:
-            requested_peak_window_boost = float(np.clip(user_peak_weight, 1.0, 10.0))
-            print(f"✅ Using saved peak weight: {requested_peak_window_boost} for {emission_value}")
-        else:
-            requested_peak_window_boost = float(payload.get("peak_window_boost", 1.0))
+            saved_peak = float(np.clip(user_peak_weight, 1.0, 10.0))
+            requested_peak_window_boost = max(requested_peak_window_boost, saved_peak)
+            print(f"✅ Peak weight: payload={float(payload.get('peak_window_boost', 1.0)):.2f}, saved={saved_peak:.2f} → using {requested_peak_window_boost:.2f} for {emission_value}")
 
         if user_early_weight is not None:
-            requested_early_rise_boost = float(np.clip(user_early_weight, 1.0, 10.0))
-            print(f"✅ Using saved early weight: {requested_early_rise_boost} for {emission_value}")
-        else:
-            requested_early_rise_boost = float(payload.get("early_rise_boost", 1.0))
+            saved_early = float(np.clip(user_early_weight, 1.0, 10.0))
+            requested_early_rise_boost = max(requested_early_rise_boost, saved_early)
+            print(f"✅ Early weight: payload={float(payload.get('early_rise_boost', 1.0)):.2f}, saved={saved_early:.2f} → using {requested_early_rise_boost:.2f} for {emission_value}")
 
-        # Also store tolerances for use in diagnostics if needed
+        # Read tolerances: prefer values sent directly in the fit payload (always
+        # fresh from the UI inputs), fall back to persisted emission_weights.
         user_tolerances = user_weights.get('tolerances', {})
-       
-        peak_tolerance = user_tolerances.get('peak', 0.01)
-        rise_tolerance = user_tolerances.get('rise', 0.01)
-        decay_tolerance = user_tolerances.get('decay', 0.01)
+
+        peak_tolerance = float(payload.get('peak_tolerance', user_tolerances.get('peak', 0.01)))
+        rise_tolerance = float(payload.get('rise_tolerance', user_tolerances.get('rise', 0.01)))
+        decay_tolerance = float(payload.get('decay_tolerance', user_tolerances.get('decay', 0.01)))
 
         print(f"Using tolerances for {emission_value}: peak={peak_tolerance}, rise={rise_tolerance}, decay={decay_tolerance}")
 
@@ -1813,9 +1911,9 @@ def fit():
             phase="run_fitting",
             message=f"Running {requested_quality} fit (all_points={bool(optimize_all_points)}).",
             target_r2=float(requested_target_r2),
-            adaptive_max_cycles=int(np.clip(requested_adaptive_cycles, 1, 20)),
-            peak_window_boost=float(np.clip(requested_peak_window_boost, 1.0, 2.5)),
-            early_rise_boost=float(np.clip(requested_early_rise_boost, 1.0, 2.5)),
+            adaptive_max_cycles=int(np.clip(requested_adaptive_cycles, 1, 50)),
+            peak_window_boost=float(np.clip(requested_peak_window_boost, 1.0, 10.0)),
+            early_rise_boost=float(np.clip(requested_early_rise_boost, 1.0, 10.0)),
         )
 
         fit_y, best_params, sse, diag = run_fitting(
@@ -2045,6 +2143,7 @@ def fit():
                 "FIT-E12": "FIT-E02",
                 "FIT-E13": "FIT-E03",
                 "FIT-E21": "FIT-E04",
+                "FIT-E22": "FIT-E05",
             }.get(error_code, error_code),
             "dominant_error_region": dominant_region,
             "region_mae": {
@@ -2060,7 +2159,11 @@ def fit():
                 "FIT-E12": "Peak-window mismatch dominates",
                 "FIT-E13": "Tail mismatch dominates",
                 "FIT-E21": "Timing mismatch despite acceptable R2",
+                "FIT-E22": "Decay tau difference exceeds threshold",
                 "FIT-E31": "Host/annealing influence likely over-constraining fit",
+                "FIT-E41": "Peak timing tolerance not met",
+                "FIT-E42": "Rise time tolerance not met",
+                "FIT-E43": "Decay tau tolerance not met",
             },
         }
 
@@ -2149,6 +2252,89 @@ def fit():
                 "rise_time_10_90": rise_ratio_err,
                 "decay_tau_1e": decay_ratio_err,
             }
+
+            # Tolerance-based error codes: check user-set tolerances
+            # Proposals are based on the *actual weights used* in this fit and the
+            # *relative error distribution* across regions, so the next retry can
+            # explore around the proven-good weights rather than blindly escalating.
+            tol_info = diag.get("tolerance_achieved", {})
+            tol_targets = diag.get("tolerance_targets", {})
+            used_peak_w = diag.get("peak_window_boost", 1.0)
+            used_early_w = diag.get("early_rise_boost", 1.0)
+
+            # Compute per-region error severity to distribute weight emphasis.
+            peak_err = tol_info.get("peak")
+            rise_err = tol_info.get("rise")
+            decay_err = tol_info.get("decay")
+            peak_tgt = tol_targets.get("peak", 0.01)
+            rise_tgt = tol_targets.get("rise", 0.01)
+            decay_tgt = tol_targets.get("decay", 0.01)
+
+            # Fractional gap: how far each error is from its target (0 = met)
+            peak_gap = max(0, (peak_err or 0) - peak_tgt) / max(peak_tgt, 1e-12)
+            rise_gap = max(0, (rise_err or 0) - rise_tgt) / max(rise_tgt, 1e-12)
+            decay_gap = max(0, (decay_err or 0) - decay_tgt) / max(decay_tgt, 1e-12)
+            total_gap = peak_gap + rise_gap + decay_gap + 1e-12
+
+            # Weight adjustment: scale relative to which region needs the most help,
+            # anchored on the weights that actually produced the current best fit.
+            tol_codes_added = []
+            if peak_err is not None and peak_tgt is not None:
+                if peak_err > peak_tgt:
+                    tol_codes_added.append("FIT-E41")
+                    # Proportional to this region's share of total error
+                    region_share = peak_gap / total_gap
+                    # Small multiplicative bump on the used weight, scaled by region share
+                    boost_proposal = min(10.0, max(used_peak_w, used_peak_w * (1.0 + 0.15 * region_share * (peak_gap + 1))))
+                    extra_cycles = max(2, min(8, int(2 + peak_gap)))
+                    troubleshooting_block.setdefault("recommendations", []).append(
+                        f"[FIT-E41] Peak timing tolerance not met: error {peak_err:.4f} > target {peak_tgt:.4f}. "
+                        f"Proposed: increase peak weight to {boost_proposal:.2f}, add {extra_cycles} adaptive cycles."
+                    )
+                    troubleshooting_block.setdefault("proposed_actions", []).append({
+                        "code": "FIT-E41", "action": "boost_peak",
+                        "peak_window_boost": round(boost_proposal, 3),
+                        "used_weight": round(used_peak_w, 3),
+                        "extra_adaptive_cycles": extra_cycles,
+                    })
+            if rise_err is not None and rise_tgt is not None:
+                if rise_err > rise_tgt:
+                    tol_codes_added.append("FIT-E42")
+                    region_share = rise_gap / total_gap
+                    boost_proposal = min(10.0, max(used_early_w, used_early_w * (1.0 + 0.15 * region_share * (rise_gap + 1))))
+                    extra_cycles = max(3, min(10, int(3 + rise_gap * 1.5)))
+                    troubleshooting_block.setdefault("recommendations", []).append(
+                        f"[FIT-E42] Rise time tolerance not met: error {rise_err:.4f} > target {rise_tgt:.4f}. "
+                        f"Proposed: increase early-rise weight to {boost_proposal:.2f}, switch to long mode, add {extra_cycles} adaptive cycles."
+                    )
+                    troubleshooting_block.setdefault("proposed_actions", []).append({
+                        "code": "FIT-E42", "action": "boost_early_rise",
+                        "early_rise_boost": round(boost_proposal, 3),
+                        "used_weight": round(used_early_w, 3),
+                        "fit_mode": "long",
+                        "extra_adaptive_cycles": extra_cycles,
+                    })
+            if decay_err is not None and decay_tgt is not None:
+                if decay_err > decay_tgt:
+                    tol_codes_added.append("FIT-E43")
+                    extra_cycles = max(3, min(10, int(3 + decay_gap * 2)))
+                    troubleshooting_block.setdefault("recommendations", []).append(
+                        f"[FIT-E43] Decay tau tolerance not met: error {decay_err:.4f} > target {decay_tgt:.4f}. "
+                        f"Proposed: switch to long mode, add {extra_cycles} adaptive cycles."
+                    )
+                    troubleshooting_block.setdefault("proposed_actions", []).append({
+                        "code": "FIT-E43", "action": "improve_decay",
+                        "fit_mode": "long",
+                        "extra_adaptive_cycles": extra_cycles,
+                    })
+            if tol_codes_added:
+                # Set the most specific tolerance error as the primary code if no
+                # more severe code (E22, E21) is already present
+                current_code = troubleshooting_block.get("error_code", "OK")
+                if current_code in ("OK", "FIT-E00", "FIT-E11", "FIT-E12", "FIT-E13"):
+                    troubleshooting_block["error_code"] = tol_codes_added[0]
+                    troubleshooting_block["target_reached"] = False
+            troubleshooting_block["tolerance_codes"] = tol_codes_added
 
         # Only expose parameters that appear directly in the selected emission's ODE equation.
         direct_params = set(param_roles["direct"])  # already includes T_offset
