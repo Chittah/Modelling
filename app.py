@@ -1,15 +1,24 @@
+import os
+
+# ── Force single-threaded BLAS/LAPACK BEFORE numpy is imported ──────────────
+# Radau uses implicit Jacobian solves via BLAS.  With multiple threads the
+# floating-point reduction order is non-deterministic, which causes different
+# adaptive step sizes to be chosen on every run → zero reproducibility.
+os.environ.setdefault("OMP_NUM_THREADS",      "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS",      "1")
+os.environ.setdefault("BLIS_NUM_THREADS",     "1")
+os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
+# ────────────────────────────────────────────────────────────────────────────
+
 from flask import Flask, jsonify, request, send_from_directory
 import numpy as np
-import os
-import json
 import traceback
 import time
 import threading
 from scipy.optimize import differential_evolution, least_squares
 from scipy.integrate import solve_ivp
 
-import pandas as pd
-from io import StringIO
 from flask import Response
 
 
@@ -139,11 +148,11 @@ class UCOdeModel:
         dtm1 = k21*Tm2 + A61*Tm6 + A71*Tm7 + A81*Tm8 + 2*Wcr*Tm5*Tm0 - A10*Tm1 - W2*Yb_e*Tm1
         dtm2 = W1*Yb_e*Tm0 - k21*Tm2
         dtm3 = W2*Yb_e*Tm1 - k35*Tm3
-        dtm4 = 0 
+        dtm4 = 0
         dtm5 = W2*Yb_e*Tm1 - A50*Tm5 - Wcr*Tm5*Tm0 - W3*Yb_e*Tm5 - bt
         dtm6 = W3*Yb_e*Tm5 - (A60 + A61)*Tm6 - W4*Yb_e*Tm6
         dtm7 = W4*Yb_e*Tm6 - (A70 + A71)*Tm7 - W5*Yb_e*Tm7
-        dtm8 = W5*Yb_e*Tm7 - (A81)*Tm8
+        dtm8 = W5*Yb_e*Tm7 - A81*Tm8  # Tm8 has no ground-state decay (A80≡0 for this system)
         return [dyb_g, dyb_e, dtm0, dtm1, dtm2, dtm3, dtm4, dtm5, dtm6, dtm7, dtm8]
 
 
@@ -237,7 +246,7 @@ def classify_parameter_roles(state_idx):
         7:  {"Rp", "Ay", "W2", "A50", "W3", "Wcr", "Wb"},        # 775nm → dtm5
         8:  {"Rp", "Ay", "W3", "A60", "A61", "W4"},               # 477/645nm → dtm6
         9:  {"Rp", "Ay", "W4", "A70", "A71", "W5"},               # 452/362nm → dtm7
-        10: {"Rp", "Ay", "W5", "A81"},                             # 345nm → dtm8
+        10: {"Rp", "Ay", "W4", "W5", "A81"},               # 345nm → dtm8 (only A81; Tm8 has no ground-state decay)
     }
     weak_map = {
         3: {"A50", "A60", "A70", "A80", "W3", "W4", "W5"},
@@ -466,8 +475,8 @@ def simulate_forward(
             t_eval=t_eval,
             args=(p[:19], p_width_ms),
             method="Radau",
-            rtol=1e-6,
-            atol=1e-9,
+            rtol=1e-8,
+            atol=1e-11,
         )
     except Exception:
         return zero_result
@@ -644,7 +653,7 @@ def run_fitting(time_ms, intensity, pulse_us,
                  lit_params=None, 
                  use_775_calibration=False, 
                  emission_key=None, cancel_checker=None, 
-                 target_r2=0.999, 
+                 target_r2=0.9990, 
                  adaptive_max_cycles=4, 
                  peak_window_boost=1.0, 
                  early_rise_boost=1.0, 
@@ -652,10 +661,12 @@ def run_fitting(time_ms, intensity, pulse_us,
                  rise_tolerance=0.01, 
                  decay_tolerance=0.01, 
                  progress_callback=None):
+    np.random.seed(42)  # Ensure full reproducibility across every run
     p_ms_nominal = max(float(pulse_us) / 1000.0, 1e-6)
     y0 = [doping_yb/100, 0, doping_tm/100, 0, 0, 0, 0, 0, 0, 0, 0] #initial conditions set from doping conc
     emission_key_s = str(emission_key)
     tm_pct = float(doping_tm) if np.isfinite(doping_tm) else 0.0
+    yb_pct = float(doping_yb) if np.isfinite(doping_yb) else 0.0
     peak_window_boost = float(np.clip(float(peak_window_boost), 1.0, 10.0))
     early_rise_boost = float(np.clip(float(early_rise_boost), 1.0, 10.0))
 
@@ -693,10 +704,16 @@ def run_fitting(time_ms, intensity, pulse_us,
     guided_params_used = []
     # 477/645 depend strongly on the Tm5 feeder chain. Keeping these fixed can
     # cause broad/late peaks at higher Tm concentrations, so unlock them here.
+    # Wb (back-transfer) always included since it directly sets the Yb effective
+    # lifetime, which dominates the long-time tail visible in 477/645 nm.
     if emission_key_s in {"477", "645"}:
-        feeder_params = {"W2", "A50", "Wcr"}
+        # k35 (Tm3→Tm5) is the only path feeding Tm5 regardless of Tm concentration.
+        # W1 (first ET step) is rate-limiting at low Yb since effective W1*Yb_e is halved.
+        feeder_params = {"W2", "A50", "Wcr", "Wb", "k35"}
+        if yb_pct < 7.0 or tm_pct < 0.3:
+            feeder_params.add("W1")
         if tm_pct >= 0.8:
-            feeder_params.update({"Wb", "k35"})
+            feeder_params.update({"k21"})
         active_set.update(feeder_params)
         guided_params_used = sorted(list(set(guided_params_used).union(feeder_params)))
 
@@ -708,6 +725,15 @@ def run_fitting(time_ms, intensity, pulse_us,
             feeder_params.update({"W2", "A50", "k35"})
         if tm_pct >= 1.5:
             feeder_params.update({"Wb"})
+        active_set.update(feeder_params)
+        guided_params_used = sorted(list(set(guided_params_used).union(feeder_params)))
+
+    # 345/347 (Tm8 channel) is a 5-photon process requiring the full cascade of
+    # upstream ET rates unlocked.  A80 is excluded (Tm8 has no ground-state decay).
+    if emission_key_s in {"345", "347"}:
+        feeder_params = {"W3", "W4", "A60", "A61", "A70", "A71", "Wcr"}
+        if tm_pct >= 0.5:
+            feeder_params.update({"W2", "A50", "k35", "Wb"})
         active_set.update(feeder_params)
         guided_params_used = sorted(list(set(guided_params_used).union(feeder_params)))
 
@@ -753,6 +779,24 @@ def run_fitting(time_ms, intensity, pulse_us,
                 param_defaults[idx_p] = float(val)
 
     all_bounds = [(1e-4, 150.0)] * 18 + [(0.0, 50.0)] + [(0.0, max_offset)]
+    # At low Yb concentrations the effective pump rate Rp*Yb_g and ET rates Wi*Yb_e
+    # are halved compared to 10% Yb, so the optimizer needs more room on Rp and W1-W3.
+    if yb_pct < 7.0:
+        low_yb_cap = 300.0
+        all_bounds[0] = (all_bounds[0][0], low_yb_cap)  # Rp
+        all_bounds[2] = (all_bounds[2][0], low_yb_cap)  # W1
+        all_bounds[3] = (all_bounds[3][0], low_yb_cap)  # W2
+        all_bounds[4] = (all_bounds[4][0], low_yb_cap)  # W3
+    # High-order emission channels (345/362 nm) require fast cascaded ET rates that
+    # can legitimately exceed the 150 ms⁻¹ default cap.  Rp, W4, W5, and for the
+    # Tm8 channel also A81 is allowed up to 300 ms⁻¹ (A80 inactive in this system).
+    if emission_key_s in {"345", "347", "362", "452"}:
+        high_cap = 300.0
+        all_bounds[0]  = (all_bounds[0][0],  high_cap)   # Rp
+        all_bounds[5]  = (all_bounds[5][0],  high_cap)   # W4
+        all_bounds[6]  = (all_bounds[6][0],  high_cap)   # W5
+        if emission_key_s in {"345", "347"}:
+            all_bounds[16] = (all_bounds[16][0], high_cap)  # A81 (Tm8→Tm1, 345 nm)
     bounds_active = [all_bounds[i] for i in active_indices]
 
     # Fit pulse width as a nuisance parameter to absorb instrument/timing uncertainty.
@@ -892,8 +936,8 @@ def run_fitting(time_ms, intensity, pulse_us,
                 t_eval=t_eval,
                 args=(params_all[:19], p_width_ms),  # pass physical params + fitted pulse width
                 method="Radau",
-                rtol=1e-6,
-                atol=1e-9,
+                rtol=1e-8,
+                atol=1e-11,
             )
         except Exception:
             return None, None
@@ -931,6 +975,25 @@ def run_fitting(time_ms, intensity, pulse_us,
         i_pk_f = int(np.argmax(fitted))
         return lin_res, log_res, i_pk_m, i_pk_f
 
+    def rise_time_10_90_fast(t_arr, y_arr):
+        """Fast 10-90% rise estimate up to the trace apex."""
+        if t_arr.size < 4 or y_arr.size != t_arr.size:
+            return None
+        i_pk = int(np.argmax(y_arr))
+        if i_pk < 2:
+            return None
+        peak = float(y_arr[i_pk])
+        if peak <= 1e-12:
+            return None
+        y_rise = y_arr[:i_pk + 1]
+        i10 = np.where(y_rise >= 0.1 * peak)[0]
+        i90 = np.where(y_rise >= 0.9 * peak)[0]
+        if i10.size == 0 or i90.size == 0:
+            return None
+        t10 = float(t_arr[i10[0]])
+        t90 = float(t_arr[i90[0]])
+        return max(0.0, t90 - t10)
+
     def tail_residual_terms(t_arr, measured, fitted, sqrt_tail):
         i_pk = int(np.argmax(measured))
         tail_mask = np.arange(t_arr.size) >= i_pk
@@ -965,6 +1028,42 @@ def run_fitting(time_ms, intensity, pulse_us,
         area_pen = (5.5 * early_rise_boost) * (area_f - area_m) / (abs(area_m) + 1e-12)
         return early_res, area_pen
 
+    def overshoot_residual_terms(t_arr, measured, fitted):
+        """Asymmetric penalty: discourage fitted trace rising above measured trace."""
+        n = t_arr.size
+        if n < 8:
+            return np.array([], dtype=float), 0.0
+
+        i_pk = int(np.argmax(measured))
+        pre_peak_mask = np.arange(n) <= i_pk
+        if np.sum(pre_peak_mask) < 5:
+            pre_peak_mask = np.arange(n) < max(5, n // 3)
+
+        # Positive-only overshoot in rise/peak region.
+        rise_peak_over = np.maximum(fitted[pre_peak_mask] - measured[pre_peak_mask], 0.0)
+
+        # Strongly penalize overshoot near apex where user expects fitted<=measured.
+        peak_val = float(measured[i_pk]) if n > 0 else 0.0
+        near_peak_mask = measured >= (0.92 * peak_val if peak_val > 1e-12 else 0.0)
+        if np.sum(near_peak_mask) < 4:
+            half = max(2, n // 30)
+            lo = max(0, i_pk - half)
+            hi = min(n, i_pk + half + 1)
+            near_peak_mask = np.zeros(n, dtype=bool)
+            near_peak_mask[lo:hi] = True
+        peak_over = np.maximum(fitted[near_peak_mask] - measured[near_peak_mask], 0.0)
+
+        overshoot_res = np.concatenate([
+            1.80 * rise_peak_over,
+            2.40 * peak_over,
+        ])
+
+        # Scalar guard for total pre-peak overshoot area.
+        area_over = np.trapz(np.maximum(fitted[pre_peak_mask] - measured[pre_peak_mask], 0.0), t_arr[pre_peak_mask])
+        area_ref = np.trapz(np.clip(measured[pre_peak_mask], 0.0, np.inf), t_arr[pre_peak_mask]) + 1e-12
+        area_over_pen = 9.0 * (area_over / area_ref)
+        return overshoot_res, area_over_pen
+
     def peak_window_residual_terms(measured, fitted):
         """Extra local residual around the measured apex to tighten peak matching."""
         n = measured.size
@@ -985,12 +1084,12 @@ def run_fitting(time_ms, intensity, pulse_us,
             mask = np.zeros(n, dtype=bool)
             mask[lo:hi] = True
 
-        # Emission-specific peak emphasis:
-        # - 645 gets the strongest apex correction.
-        # - 477 gets a lighter, dedicated correction to tighten the shoulder/peak.
+        # Global apex emphasis for all channels, with small per-channel tuning.
+        peak_scale = 1.34
+        peak_point_scale = 11.6
         if emission_key_s == "645":
-            peak_scale = 1.38
-            peak_point_scale = 12.0
+            peak_scale = 1.40
+            peak_point_scale = 12.4
         elif emission_key_s == "477":
             if tm_pct >= 0.8:
                 peak_scale = 1.42
@@ -1001,9 +1100,9 @@ def run_fitting(time_ms, intensity, pulse_us,
             else:
                 peak_scale = 1.31
                 peak_point_scale = 11.4
-        else:
-            peak_scale = 1.15
-            peak_point_scale = 9.5
+        elif emission_key_s in {"345", "347", "362", "452"}:
+            peak_scale = 1.38
+            peak_point_scale = 12.0
 
         if peak_window_boost > 1.0:
             peak_scale *= peak_window_boost
@@ -1023,11 +1122,37 @@ def run_fitting(time_ms, intensity, pulse_us,
         lin_res, log_res, i_pk_m, i_pk_f = residual_core(i_fit, fitted, sqrt_w_fit)
         tail_res, tail_area_pen = tail_residual_terms(t_fit, i_fit, fitted, sqrt_tail_fit)
         early_res, early_area_pen = early_residual_terms(t_fit, i_fit, fitted)
+        over_res, over_area_pen = overshoot_residual_terms(t_fit, i_fit, fitted)
         peak_res, peak_point_pen = peak_window_residual_terms(i_fit, fitted)
         t_span = np.ptp(t_fit) + 1e-12
         peak_time_pen = 8.0 * (t_fit[i_pk_f] - t_fit[i_pk_m]) / t_span
         peak_amp_pen = 7.5 * (fitted[i_pk_f] - i_fit[i_pk_m])
-        return np.concatenate([lin_res, log_res, early_res, peak_res, tail_res, np.array([peak_time_pen, peak_amp_pen, peak_point_pen, early_area_pen, tail_area_pen])])
+        late_peak_pen = 14.0 * max(0.0, (t_fit[i_pk_f] - t_fit[i_pk_m]) / t_span)
+
+        rise_m = rise_time_10_90_fast(t_fit, i_fit)
+        rise_f = rise_time_10_90_fast(t_fit, fitted)
+        late_rise_pen = 0.0
+        if rise_m is not None and rise_f is not None:
+            late_rise_pen = 11.0 * max(0.0, (rise_f - rise_m) / (rise_m + 1e-12))
+
+        return np.concatenate([
+            lin_res,
+            log_res,
+            early_res,
+            over_res,
+            peak_res,
+            tail_res,
+            np.array([
+                peak_time_pen,
+                peak_amp_pen,
+                peak_point_pen,
+                early_area_pen,
+                tail_area_pen,
+                over_area_pen,
+                late_peak_pen,
+                late_rise_pen,
+            ]),
+        ])
 
     def residual_vector_full(x_active):
         check_cancel()
@@ -1039,11 +1164,37 @@ def run_fitting(time_ms, intensity, pulse_us,
         lin_res, log_res, i_pk_m, i_pk_f = residual_core(intensity, fitted, sqrt_w_full)
         tail_res, tail_area_pen = tail_residual_terms(time_ms, intensity, fitted, sqrt_tail_full)
         early_res, early_area_pen = early_residual_terms(time_ms, intensity, fitted)
+        over_res, over_area_pen = overshoot_residual_terms(time_ms, intensity, fitted)
         peak_res, peak_point_pen = peak_window_residual_terms(intensity, fitted)
         t_span = np.ptp(time_ms) + 1e-12
         peak_time_pen = 8.0 * (time_ms[i_pk_f] - time_ms[i_pk_m]) / t_span
         peak_amp_pen = 7.5 * (fitted[i_pk_f] - intensity[i_pk_m])
-        return np.concatenate([lin_res, log_res, early_res, peak_res, tail_res, np.array([peak_time_pen, peak_amp_pen, peak_point_pen, early_area_pen, tail_area_pen])])
+        late_peak_pen = 14.0 * max(0.0, (time_ms[i_pk_f] - time_ms[i_pk_m]) / t_span)
+
+        rise_m = rise_time_10_90_fast(time_ms, intensity)
+        rise_f = rise_time_10_90_fast(time_ms, fitted)
+        late_rise_pen = 0.0
+        if rise_m is not None and rise_f is not None:
+            late_rise_pen = 11.0 * max(0.0, (rise_f - rise_m) / (rise_m + 1e-12))
+
+        return np.concatenate([
+            lin_res,
+            log_res,
+            early_res,
+            over_res,
+            peak_res,
+            tail_res,
+            np.array([
+                peak_time_pen,
+                peak_amp_pen,
+                peak_point_pen,
+                early_area_pen,
+                tail_area_pen,
+                over_area_pen,
+                late_peak_pen,
+                late_rise_pen,
+            ]),
+        ])
 
     def objective(x_active):
         check_cancel()
@@ -1127,12 +1278,15 @@ def run_fitting(time_ms, intensity, pulse_us,
         peak_amp_err = abs(final_y[i_pk_f] - intensity[i_pk_m]) / (abs(intensity[i_pk_m]) + 1e-12)
 
         fast_refine_r2 = 0.9999
-        fast_refine_peak_time = 0.02
-        fast_refine_peak_amp = 0.05
+        fast_refine_peak_time = 0.015
+        fast_refine_peak_amp = 0.04
         if emission_key_s == "477":
             fast_refine_r2 = 0.9997
             fast_refine_peak_time = 0.015
             fast_refine_peak_amp = 0.035
+        elif emission_key_s in {"345", "347", "362", "452"}:
+            fast_refine_peak_time = 0.012
+            fast_refine_peak_amp = 0.03
 
         if (r2_now < fast_refine_r2) or (peak_time_err > fast_refine_peak_time) or (peak_amp_err > fast_refine_peak_amp):
             res_refine = least_squares(
@@ -1168,7 +1322,8 @@ def run_fitting(time_ms, intensity, pulse_us,
         fitted = apply_weighted_scale(intensity, modeled, ones_full)
         base = intensity - fitted
         tail = 0.45 * sqrt_tail_full * (intensity - fitted)
-        return np.concatenate([base, tail])
+        over_res, over_area_pen = overshoot_residual_terms(time_ms, intensity, fitted)
+        return np.concatenate([base, tail, over_res, np.array([over_area_pen])])
 
     polish_budget = {
         "fast": (3, 600),
@@ -1332,7 +1487,8 @@ def run_fitting(time_ms, intensity, pulse_us,
             fitted = apply_weighted_scale(intensity, modeled, ones_full)
             base = _sqrt_w * (intensity - fitted)
             tail = 0.45 * _w_tail * _tail_sqrt * (intensity - fitted)
-            return np.concatenate([base, tail])
+            over_res, over_area_pen = overshoot_residual_terms(time_ms, intensity, fitted)
+            return np.concatenate([base, tail, over_res, np.array([over_area_pen])])
 
         # Increase max function evaluations on retries
         adapt_nfev = nfev_per_pass + consecutive_no_improve * 200
@@ -1494,8 +1650,68 @@ def _normalise_trace(y):
         yy = yy / mx
     return yy
 
-# Store emission weights in memory
-emission_weights = {
+
+def _estimate_composition_convergence(score, channel_quality):
+    """Classify estimator output by practical solution quality, not only optimizer termination."""
+    trace_r2_values = []
+    timing_error_ratios = []
+
+    for details in (channel_quality or {}).values():
+        if not isinstance(details, dict):
+            continue
+
+        r2 = details.get("r2")
+        if isinstance(r2, (int, float)) and np.isfinite(r2):
+            trace_r2_values.append(float(r2))
+
+        for sim_key, tgt_key in (
+            ("simulated_peak_time_ms", "target_peak_time_ms"),
+            ("simulated_decay_tau_ms", "target_decay_tau_ms"),
+        ):
+            simulated = details.get(sim_key)
+            target = details.get(tgt_key)
+            if not isinstance(simulated, (int, float)) or not isinstance(target, (int, float)):
+                continue
+            if not np.isfinite(simulated) or not np.isfinite(target):
+                continue
+            timing_error_ratios.append(abs(float(simulated) - float(target)) / max(abs(float(target)), 1e-9))
+
+    score_value = float(score) if np.isfinite(score) else float("inf")
+    mean_r2 = float(np.mean(trace_r2_values)) if trace_r2_values else None
+    min_r2 = float(np.min(trace_r2_values)) if trace_r2_values else None
+    mean_timing_error = float(np.mean(timing_error_ratios)) if timing_error_ratios else None
+    max_timing_error = float(np.max(timing_error_ratios)) if timing_error_ratios else None
+
+    trace_ok = (
+        not trace_r2_values
+        or ((min_r2 is not None and min_r2 >= 0.94) and (mean_r2 is not None and mean_r2 >= 0.97))
+    )
+    timing_ok = (
+        not timing_error_ratios
+        or ((max_timing_error is not None and max_timing_error <= 0.20)
+            and (mean_timing_error is not None and mean_timing_error <= 0.12))
+    )
+
+    if trace_r2_values:
+        score_ok = score_value <= 0.06
+    elif timing_error_ratios:
+        score_ok = score_value <= 0.03
+    else:
+        score_ok = False
+
+    quality_converged = bool(trace_ok and timing_ok and score_ok)
+    return {
+        "quality_converged": quality_converged,
+        "score_ok": bool(score_ok),
+        "trace_ok": bool(trace_ok),
+        "timing_ok": bool(timing_ok),
+        "mean_r2": mean_r2,
+        "min_r2": min_r2,
+        "mean_timing_error": mean_timing_error,
+        "max_timing_error": max_timing_error,
+    }
+
+DEFAULT_EMISSION_WEIGHTS = {
     '1800': {'peak': 1.27, 'early': 1.3, 'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}},
     '1230': {'peak': 1.27, 'early': 1.3, 'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}},
     '775':  {'peak': 1.27, 'early': 1.3, 'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}},
@@ -1505,29 +1721,58 @@ emission_weights = {
     '362':  {'peak': 1.27, 'early': 1.3, 'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}},
     '345':  {'peak': 1.27, 'early': 1.3, 'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}},
 }
-# File to persist weights
-WEIGHTS_FILE = 'emission_weights.json'
+
+def _copy_default_emission_weights():
+    return {
+        em: {
+            'peak': float(v['peak']),
+            'early': float(v['early']),
+            'tolerances': {
+                'peak': float(v['tolerances']['peak']),
+                'decay': float(v['tolerances']['decay']),
+                'rise': float(v['tolerances']['rise']),
+            },
+        }
+        for em, v in DEFAULT_EMISSION_WEIGHTS.items()
+    }
+
+
+def _sanitize_weight_entry(emission, entry):
+    base = _copy_default_emission_weights().get(str(emission), {
+        'peak': 1.27,
+        'early': 1.3,
+        'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01},
+    })
+    if not isinstance(entry, dict):
+        return base
+
+    peak = entry.get('peak', base['peak'])
+    early = entry.get('early', base['early'])
+    tols = entry.get('tolerances', {})
+    if not isinstance(tols, dict):
+        tols = {}
+
+    return {
+        'peak': float(np.clip(float(peak), 1.0, 10.0)),
+        'early': float(np.clip(float(early), 1.0, 10.0)),
+        'tolerances': {
+            'peak': float(np.clip(float(tols.get('peak', base['tolerances']['peak'])), 0.0001, 1.0)),
+            'decay': float(np.clip(float(tols.get('decay', base['tolerances']['decay'])), 0.0001, 1.0)),
+            'rise': float(np.clip(float(tols.get('rise', base['tolerances']['rise'])), 0.0001, 1.0)),
+        },
+    }
+
+
+# Store emission weights in memory
+emission_weights = _copy_default_emission_weights()
 
 def load_weights():
-    """Load saved weights from file"""
-    global emission_weights
-    if os.path.exists(WEIGHTS_FILE):
-        try:
-            with open(WEIGHTS_FILE, 'r') as f:
-                saved = json.load(f)
-                emission_weights.update(saved)
-                print(f"✅ Loaded emission weights from {WEIGHTS_FILE}")
-        except Exception as e:
-            print(f"⚠️ Could not load weights: {e}")
+    """Memory-only mode: keep defaults/current in-process values."""
+    return
 
 def save_weights():
-    """Save current weights to file"""
-    try:
-        with open(WEIGHTS_FILE, 'w') as f:
-            json.dump(emission_weights, f, indent=2)
-        print(f"💾 Saved emission weights to {WEIGHTS_FILE}")
-    except Exception as e:
-        print(f"⚠️ Could not save weights: {e}")
+    """Memory-only mode: no file is written."""
+    return
 
 # =============================================================================
 # SECTION 8 – LUMINESCENCE FLOW SOLVERS
@@ -1644,6 +1889,7 @@ def solve_luminescence_simulation_flow(payload):
 
 def solve_luminescence_optimization_flow(payload):
     """Separate optimization pipeline for non-ETUC/single-doped options."""
+    np.random.seed(42)  # Ensure full reproducibility across every run
     t_ms = _build_time_axis_from_payload(payload)
     i_meas = _normalise_trace(payload.get("intensity", []))
     if t_ms.size == 0 or i_meas.size == 0 or t_ms.size != i_meas.size:
@@ -1781,7 +2027,14 @@ def fit():
         if not physics_state["configured"]:
             return jsonify({"error": "Configure Physics first"}), 400
 
-        intensity = (intensity - np.min(intensity)) / (np.max(intensity) + 1e-10)
+        intensity = intensity - np.min(intensity)
+        # Use 99.5th-percentile as the normalisation reference so that isolated
+        # noise spikes do not compress the entire trace to near-zero.
+        p_peak = float(np.percentile(intensity, 99.5)) if intensity.size > 10 else float(np.max(intensity))
+        if p_peak > 1e-10:
+            intensity = np.clip(intensity / p_peak, 0.0, 1.0)
+        else:
+            intensity = np.zeros_like(intensity)
         t_ms = time_data * physics_state["time_scale"]
         
         # State Mapping for 11-state model
@@ -1971,18 +2224,10 @@ def fit():
             for q in base_qualities:
                 add_candidate(q, True, "all_points_for_high_target")
 
-        # 775 nm can need extra strict pass due to coupled feeder dynamics.
-        if emission_value == "775" and target_r2 >= 0.9999:
-            add_candidate("accurate", True, "775_strict_pass")
-
-        # 477 nm benefits from an extra strict all-points pass to improve peak timing and apex shape.
-        if emission_value == "477" and target_r2 >= 0.9999:
-            add_candidate("accurate", True, "477_strict_peak_pass")
-
-        # 362 nm often needs the strict all-points pass due to sharper apex and
-        # stronger sensitivity to upstream feeder dynamics.
-        if emission_value == "362" and target_r2 >= 0.9999:
-            add_candidate("accurate", True, "362_strict_peak_pass")
+        # For high target R2, run one strict accurate+all-points pass for any
+        # supported emission to tighten apex and rise alignment consistently.
+        if emission_value in emission_map and target_r2 >= 0.9999:
+            add_candidate("accurate", True, f"{emission_value}_strict_peak_pass")
 
         # First fit already computed above; use it as baseline.
         current_r2 = 1.0 - sse / denom
@@ -2104,8 +2349,20 @@ def fit():
 
         recommendations = []
         error_code = "OK"
+        secondary_error_codes = []
         influence_info = influence_model if isinstance(influence_model, dict) else {}
         combined_nr_factor = float(influence_info.get("combined_nr_factor", 1.0) or 1.0)
+        host_nr_factor = float(influence_info.get("host_nr_factor", 1.0) or 1.0)
+        anneal_nr_factor = float(influence_info.get("anneal_nr_factor", 1.0) or 1.0)
+        mole_nr_factor = float(influence_info.get("mole_nr_factor", 1.0) or 1.0)
+        nr_is_critical = (combined_nr_factor > 1.30) or (combined_nr_factor < 0.75)
+        nr_is_warning = ((combined_nr_factor > 1.25) and (combined_nr_factor <= 1.30)) or ((combined_nr_factor >= 0.75) and (combined_nr_factor < 0.80))
+        nr_severity = "critical" if nr_is_critical else ("warning" if nr_is_warning else "nominal")
+        nr_band_distance = 0.0
+        if combined_nr_factor > 1.30:
+            nr_band_distance = combined_nr_factor - 1.30
+        elif combined_nr_factor < 0.75:
+            nr_band_distance = 0.75 - combined_nr_factor
 
         if achieved_r2 < target_r2:
             error_code = "FIT-E00"
@@ -2123,10 +2380,19 @@ def fit():
                 error_code = "FIT-E13"
                 recommendations.append("[FIT-E13] Dominant error region is tail: re-check baseline correction and long-time SNR.")
 
-            if combined_nr_factor > 1.30 or combined_nr_factor < 0.75:
-                error_code = "FIT-E31"
+            if nr_is_critical:
+                secondary_error_codes.append("FIT-E31")
                 recommendations.append(
-                    "[FIT-E31] Host/annealing non-radiative scaling is far from nominal; revisit host mole factor, lattice phonon energy, and annealing temperature assumptions before over-tuning kinetics."
+                    f"[FIT-E31] Host/annealing non-radiative scaling is far from nominal: combined_nr_factor={combined_nr_factor:.4f} "
+                    f"(host={host_nr_factor:.4f}, anneal={anneal_nr_factor:.4f}, mole={mole_nr_factor:.4f}). "
+                    "Revisit host mole factor, lattice phonon energy, and annealing temperature assumptions before over-tuning kinetics."
+                )
+            elif nr_is_warning:
+                secondary_error_codes.append("FIT-E31-WARN")
+                recommendations.append(
+                    f"[FIT-E31-WARN] Host/annealing non-radiative scaling is near alert band: combined_nr_factor={combined_nr_factor:.4f} "
+                    f"(host={host_nr_factor:.4f}, anneal={anneal_nr_factor:.4f}, mole={mole_nr_factor:.4f}). "
+                    "Treat this as a caution before escalating kinetic weights."
                 )
 
         diag["troubleshooting"] = {
@@ -2137,7 +2403,9 @@ def fit():
             "target_r2": float(target_r2),
             "achieved_r2": float(achieved_r2),
             "target_reached": bool(achieved_r2 >= target_r2),
+            "primary_error_code": error_code,
             "error_code": error_code,
+            "secondary_error_codes": secondary_error_codes,
             "legacy_error_code": {
                 "FIT-E11": "FIT-E01",
                 "FIT-E12": "FIT-E02",
@@ -2145,6 +2413,16 @@ def fit():
                 "FIT-E21": "FIT-E04",
                 "FIT-E22": "FIT-E05",
             }.get(error_code, error_code),
+            "nr_diagnostics": {
+                "combined_nr_factor": float(combined_nr_factor),
+                "host_nr_factor": float(host_nr_factor),
+                "anneal_nr_factor": float(anneal_nr_factor),
+                "mole_nr_factor": float(mole_nr_factor),
+                "severity": nr_severity,
+                "critical_range": "<0.75 or >1.30",
+                "warning_range": "0.75-0.80 or 1.25-1.30",
+                "distance_from_critical_band": float(nr_band_distance),
+            },
             "dominant_error_region": dominant_region,
             "region_mae": {
                 "early": early_mae,
@@ -2161,6 +2439,7 @@ def fit():
                 "FIT-E21": "Timing mismatch despite acceptable R2",
                 "FIT-E22": "Decay tau difference exceeds threshold",
                 "FIT-E31": "Host/annealing influence likely over-constraining fit",
+                "FIT-E31-WARN": "Host/annealing influence near alert band",
                 "FIT-E41": "Peak timing tolerance not met",
                 "FIT-E42": "Rise time tolerance not met",
                 "FIT-E43": "Decay tau tolerance not met",
@@ -2231,6 +2510,7 @@ def fit():
             decay_tau_threshold = 0.1
             if decay_tau_abs_err is not None and decay_tau_abs_err > decay_tau_threshold:
                 troubleshooting_block["error_code"] = "FIT-E22"
+                troubleshooting_block["primary_error_code"] = "FIT-E22"
                 troubleshooting_block["legacy_error_code"] = "FIT-E05"
                 troubleshooting_block["target_reached"] = False
                 troubleshooting_block.setdefault("recommendations", []).append(
@@ -2238,6 +2518,7 @@ def fit():
                 )
             elif troubleshooting_block.get("target_reached") and timing_mismatch_warning:
                 troubleshooting_block["error_code"] = "FIT-E21"
+                troubleshooting_block["primary_error_code"] = "FIT-E21"
                 troubleshooting_block["legacy_error_code"] = "FIT-E04"
                 troubleshooting_block.setdefault("recommendations", []).append(
                     "[FIT-E21] Timing mismatch remains despite acceptable R²: prefer the solution with lower rise/peak timing error, especially for 345/362 multi-channel runs."
@@ -2333,6 +2614,7 @@ def fit():
                 current_code = troubleshooting_block.get("error_code", "OK")
                 if current_code in ("OK", "FIT-E00", "FIT-E11", "FIT-E12", "FIT-E13"):
                     troubleshooting_block["error_code"] = tol_codes_added[0]
+                    troubleshooting_block["primary_error_code"] = tol_codes_added[0]
                     troubleshooting_block["target_reached"] = False
             troubleshooting_block["tolerance_codes"] = tol_codes_added
 
@@ -2405,20 +2687,11 @@ def fit_progress():
     if not progress:
         return jsonify({"fit_request_id": fit_request_id, "found": False}), 200
 
-    # Only show progress info in terminal if fit is completed, cancelled, or error
-    status = progress.get("status", "")
-    if status in ("completed", "cancelled", "error"):
-        return jsonify({
-            "fit_request_id": fit_request_id,
-            "found": True,
-            **progress,
-        })
-    else:
-        return jsonify({
-            "fit_request_id": fit_request_id,
-            "found": True,
-            "status": status,
-        })
+    return jsonify({
+        "fit_request_id": fit_request_id,
+        "found": True,
+        **progress,
+    })
 
 
 @app.route("/cancel_fit", methods=["POST"])
@@ -2433,16 +2706,42 @@ def cancel_fit():
 
 @app.route("/api/configure_physics", methods=["POST"])
 def configure_physics():
-    config = request.get_json()
+    config = request.get_json() or {}
+    time_unit = str(config.get("time_unit", "ms"))
+    time_scale = {"ns": 1e-6, "us": 1e-3, "ms": 1.0}.get(time_unit, 1.0)
+    host = str(config.get("host", "NaYF4"))
+    phonon_energy_cm = float(config.get("phonon_energy_cm", 350.0) or 350.0)
+    fit_quality = str(config.get("fit_quality", physics_state.get("fit_quality", "fast")))
+
+    # Lightweight regime tag used by frontend status text.
+    if phonon_energy_cm < 300.0:
+        regime = "very_low_phonon"
+    elif phonon_energy_cm < 420.0:
+        regime = "low_phonon"
+    elif phonon_energy_cm < 600.0:
+        regime = "medium_phonon"
+    else:
+        regime = "high_phonon"
+
     physics_state.update({
         "configured": True,
-        "time_scale": {"ns": 1e-6, "us": 1e-3, "ms": 1.0}.get(config.get("time_unit"), 1.0),
+        "time_scale": time_scale,
         "doping_yb": float(config.get("doping_yb", 10.0)),
         "doping_tm": float(config.get("doping_tm", 0.1)),
-        "time_unit": config.get("time_unit", "ms"),
-        "fit_quality": config.get("fit_quality", physics_state.get("fit_quality", "fast"))
+        "time_unit": time_unit,
+        "fit_quality": fit_quality,
     })
-    return jsonify({"success": True})
+    return jsonify({
+        "success": True,
+        "model_selected": "multilevel_ode",
+        "regime": regime,
+        "w_et_upper": 150.0,
+        "w_cr_active": bool(physics_state.get("doping_tm", 0.0) > 0.0),
+        "time_scale_factor": float(time_scale),
+        "host": host,
+        "phonon_energy_cm": phonon_energy_cm,
+        "fit_quality": fit_quality,
+    })
 
 
 @app.route("/simulate_luminescence_flow", methods=["POST"])
@@ -2620,6 +2919,7 @@ def estimate_composition_route():
     and a ±15 % heuristic confidence range.
     """
     try:
+        np.random.seed(42)  # Ensure full reproducibility across every run
         payload      = request.get_json() or {}
         channels_raw = payload.get("channels") or {}
         user_params  = payload.get("lit_params") or {}
@@ -2664,12 +2964,9 @@ def estimate_composition_route():
         for emission, ch_data in channels_raw.items():
             em = str(emission)
             if "time" in ch_data and "intensity" in ch_data:
-                t_ch = np.asarray(ch_data["time"],      dtype=float)
-                i_ch = np.asarray(ch_data["intensity"], dtype=float)
+                t_ch = np.asarray(ch_data["time"], dtype=float)
+                i_ch = _normalise_trace(ch_data["intensity"])
                 if t_ch.size >= 10 and i_ch.size == t_ch.size:
-                    mx = float(np.max(i_ch))
-                    if mx > 1e-12:
-                        i_ch /= mx
                     full_trace_data[em] = {"time": t_ch, "intensity": i_ch}
                     m = compute_trace_metrics(t_ch, i_ch)
                     if m["peak_time"] is not None:
@@ -2691,17 +2988,43 @@ def estimate_composition_route():
                                 if e in ["775","477","645","362","452","345"] else 99)
         has_full = bool(full_trace_data)
 
-        # Build simulation time axis from reference data or a sensible default
-        if full_trace_data:
-            ref_t = full_trace_data[next(iter(full_trace_data))]["time"]
-        else:
-            t_max = max(
-                (v["peak_time_ms"] + 8.0 * max(v["decay_tau_ms"], 0.5))
-                for v in target_metrics.values()
-                if v["peak_time_ms"] > 0
-            ) if target_metrics else 15.0
-            ref_t = np.linspace(0.0, float(t_max), 400)
+        def _build_estimator_time_axis():
+            if full_trace_data:
+                all_times = [entry["time"] for entry in full_trace_data.values() if entry["time"].size > 1]
+                global_max = max(float(np.max(tt)) for tt in all_times)
+                max_points_seen = max(int(tt.size) for tt in all_times)
+                n_points = int(np.clip(max(1400, max_points_seen, int(global_max * 260.0)), 1400, 6000))
+            else:
+                positive_windows = [
+                    float(v["peak_time_ms"]) + 8.0 * max(float(v["decay_tau_ms"]), 0.5)
+                    for v in target_metrics.values()
+                    if float(v.get("peak_time_ms", 0.0)) > 0.0
+                ]
+                global_max = max(positive_windows) if positive_windows else 15.0
+                n_points = int(np.clip(max(1600, int(global_max * 280.0)), 1600, 6000))
 
+            global_max = max(global_max, max(float(pulse_us) / 1000.0, 0.25))
+            early_end = min(global_max * 0.22, max(float(pulse_us) / 1000.0 * 10.0, 0.8))
+            if early_end <= 0.0 or early_end >= global_max:
+                return np.linspace(0.0, global_max, n_points)
+
+            early_points = int(np.clip(int(n_points * 0.45), 450, n_points - 300))
+            late_points = max(n_points - early_points + 1, 300)
+            return np.unique(np.concatenate([
+                np.linspace(0.0, early_end, early_points, endpoint=False),
+                np.linspace(early_end, global_max, late_points),
+            ]))
+
+        def _metric_log_error(observed, target):
+            if observed is None or target is None:
+                return 3.0
+            observed = float(observed)
+            target = float(target)
+            if (not np.isfinite(observed)) or (not np.isfinite(target)) or target <= 0.0:
+                return 3.0
+            return float(np.log((observed + 1e-9) / (target + 1e-9)))
+
+        ref_t = _build_estimator_time_axis()
         _ch_weights = {"775": 1.0, "477": 1.0, "645": 0.8, "362": 1.0, "452": 0.8, "345": 0.9}
 
         def _score(x):
@@ -2728,22 +3051,32 @@ def estimate_composition_route():
             total = 0.0
             denom = 0.0
             for em in emissions_list:
-                w   = _ch_weights.get(em, 1.0)
+                w = _ch_weights.get(em, 1.0)
                 sim = traces.get(em, np.zeros(ref_t.size))
                 if has_full and em in full_trace_data:
-                    meas   = full_trace_data[em]["intensity"]
+                    meas = full_trace_data[em]["intensity"]
                     t_meas = full_trace_data[em]["time"]
-                    sim_on = np.interp(t_meas, ref_t, sim)
-                    sse    = np.sum((meas - sim_on) ** 2)
-                    var    = np.sum((meas - np.mean(meas)) ** 2) + 1e-12
+                    sim_on = np.interp(t_meas, ref_t, sim, left=0.0, right=0.0)
+                    sse = np.sum((meas - sim_on) ** 2)
+                    var = np.sum((meas - np.mean(meas)) ** 2) + 1e-12
                     total += w * (1.0 - max(-1.0, 1.0 - sse / var))
+                    denom += w
                 elif em in target_metrics:
-                    m        = compute_trace_metrics(ref_t, sim)
-                    ref      = target_metrics[em]
-                    pt_err   = ((m["peak_time"] or 0.0) - ref["peak_time_ms"])  / (abs(ref["peak_time_ms"]) + 1e-6)
-                    dt_err   = ((m["decay_tau_1e"] or 0.0) - ref["decay_tau_ms"]) / (abs(ref["decay_tau_ms"]) + 1e-6)
-                    total   += w * (pt_err ** 2 + dt_err ** 2)
-                denom += w
+                    m = compute_trace_metrics(ref_t, sim)
+                    ref = target_metrics[em]
+                    channel_score = 0.0
+                    channel_weight = 0.0
+                    if float(ref.get("peak_time_ms", 0.0)) > 0.0:
+                        pt_err = _metric_log_error(m["peak_time"], ref["peak_time_ms"])
+                        channel_score += 1.15 * (pt_err ** 2)
+                        channel_weight += 1.15
+                    if float(ref.get("decay_tau_ms", 0.0)) > 0.0:
+                        dt_err = _metric_log_error(m["decay_tau_1e"], ref["decay_tau_ms"])
+                        channel_score += 1.35 * (dt_err ** 2)
+                        channel_weight += 1.35
+                    if channel_weight > 0.0:
+                        total += w * (channel_score / channel_weight)
+                        denom += w
             return total / (denom + 1e-12)
 
         bounds_de = [
@@ -2796,14 +3129,14 @@ def estimate_composition_route():
         for em in emissions_list:
             sim = best_traces.get(em, np.zeros(ref_t.size))
             if has_full and em in full_trace_data:
-                meas   = full_trace_data[em]["intensity"]
+                meas = full_trace_data[em]["intensity"]
                 t_meas = full_trace_data[em]["time"]
-                sim_on = np.interp(t_meas, ref_t, sim)
-                sse    = float(np.sum((meas - sim_on) ** 2))
-                var    = float(np.sum((meas - np.mean(meas)) ** 2)) + 1e-12
+                sim_on = np.interp(t_meas, ref_t, sim, left=0.0, right=0.0)
+                sse = float(np.sum((meas - sim_on) ** 2))
+                var = float(np.sum((meas - np.mean(meas)) ** 2)) + 1e-12
                 channel_quality[em] = {"r2": round(max(-1.0, 1.0 - sse / var), 5)}
             elif em in target_metrics:
-                m   = compute_trace_metrics(ref_t, sim)
+                m = compute_trace_metrics(ref_t, sim)
                 ref = target_metrics[em]
                 channel_quality[em] = {
                     "simulated_peak_time_ms": round(m["peak_time"] or 0.0, 4),
@@ -2819,12 +3152,26 @@ def estimate_composition_route():
             phonon_energy_cm=phonon_energy_cm,
             host_mole_factor=host_mole_factor,
         )
+        convergence_summary = _estimate_composition_convergence(float(de_result.fun), channel_quality)
+        optimizer_converged = bool(de_result.success)
+        converged = bool(optimizer_converged or convergence_summary["quality_converged"])
+        if optimizer_converged:
+            convergence_note = "Optimizer reported convergence within the configured iteration budget."
+        elif convergence_summary["quality_converged"]:
+            convergence_note = "Iteration budget was reached, but the best estimate satisfied the quality thresholds."
+        else:
+            convergence_note = "Iteration budget was reached before the estimate met the quality thresholds."
+
         return jsonify({
             "ok":          True,
             "best_yb_pct": round(best_yb, 2),
             "best_tm_pct": round(best_tm, 3),
             "score":       float(de_result.fun),
-            "converged":   bool(de_result.success),
+            "converged":   converged,
+            "optimizer_converged": optimizer_converged,
+            "quality_converged": bool(convergence_summary["quality_converged"]),
+            "convergence_note": convergence_note,
+            "convergence_metrics": convergence_summary,
             "host_material": host_material,
             "annealing_c": annealing_c,
             "host_mole_factor": host_mole_factor,
@@ -2849,7 +3196,7 @@ def update_emission_weights():
     Update weights and error tolerances for a specific emission.
     """
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         
         emission = data.get('emission')
         peak_weight = data.get('peakWeight')
@@ -2861,26 +3208,23 @@ def update_emission_weights():
             return jsonify({'error': 'Emission not specified'}), 400
         
         if emission not in emission_weights:
-             emission_weights[emission] = {
-                'peak': 1.27,
-                'early': 1.3,
-                'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}
-            }
+            emission_weights[emission] = _sanitize_weight_entry(emission, {})
+
         # Update weights
         if peak_weight is not None:
-            emission_weights[emission]['peak'] = float(peak_weight)
+            emission_weights[emission]['peak'] = float(np.clip(float(peak_weight), 1.0, 10.0))
         
         if early_weight is not None:
-            emission_weights[emission]['early'] = float(early_weight)
+            emission_weights[emission]['early'] = float(np.clip(float(early_weight), 1.0, 10.0))
         
         # Update error tolerances
         if error_tolerance:
             if 'peak' in error_tolerance:
-                emission_weights[emission]['tolerances']['peak'] = float(error_tolerance['peak'])
+                emission_weights[emission]['tolerances']['peak'] = float(np.clip(float(error_tolerance['peak']), 0.0001, 1.0))
             if 'decay' in error_tolerance:
-                emission_weights[emission]['tolerances']['decay'] = float(error_tolerance['decay'])
+                emission_weights[emission]['tolerances']['decay'] = float(np.clip(float(error_tolerance['decay']), 0.0001, 1.0))
             if 'rise' in error_tolerance:
-                emission_weights[emission]['tolerances']['rise'] = float(error_tolerance['rise'])
+                emission_weights[emission]['tolerances']['rise'] = float(np.clip(float(error_tolerance['rise']), 0.0001, 1.0))
         
         # Save to file
         save_weights()
@@ -2913,13 +3257,9 @@ def get_emission_weights():
                     'weights': emission_weights[emission]
                 })
             else:
-               return jsonify({
+                return jsonify({
                     'emission': emission,
-                    'weights': {
-                        'peak': 1.27,
-                        'early': 1.3,
-                        'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}
-                    }
+                    'weights': _sanitize_weight_entry(emission, {})
                 })
         else:
             return jsonify(emission_weights)
@@ -2932,13 +3272,8 @@ def get_emission_weights():
 def reset_emission_weights():
     """Reset weights to default values for all emissions"""
     global emission_weights
-    
-    for em in emission_weights:
-        emission_weights[em] = {
-            'peak': 1.27,
-            'early': 1.3,
-            'tolerances': {'peak': 0.01, 'decay': 0.01, 'rise': 0.01}
-        }
+
+    emission_weights = _copy_default_emission_weights()
     
     save_weights()
     

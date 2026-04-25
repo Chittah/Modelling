@@ -51,12 +51,14 @@ The server starts at **http://localhost:5050**. Open in a browser to access the 
 
 ## Architecture
 
-### Two-file monolith
+### Three-file separated architecture
 
 | File | Lines | Role |
 |------|-------|------|
-| `app.py` | 2 955 | Flask backend — ODE solver, optimisation, all REST API routes |
-| `interactive_fitter copy.html` | 7 371 | Full frontend — HTML + CSS + JavaScript (single page application) |
+| `app.py` | ~2 955 | Flask backend — ODE solver, optimisation, all REST API routes |
+| `interactive_fitter copy.html` | ~1 690 | HTML template — structure and layout only |
+| `static/css/style.css` | ~840 | All CSS styles (extracted from original monolith) |
+| `static/js/app.js` | ~5 100 | All JavaScript — UI logic, ODE databases, charting, fitting orchestration |
 
 The backend serves the HTML file and provides a JSON API. The frontend handles all user interaction, chart rendering, file parsing, multi-channel orchestration, and result management.
 
@@ -75,26 +77,28 @@ The backend serves the HTML file and provides a JSON API. The frontend handles a
 | 9 — Flask Routes | 1723–2949 | 13 REST endpoints |
 | 10 — Entry Point | 2950–2955 | `app.run()` |
 
-### Frontend Sections (interactive_fitter copy.html)
+### Frontend Sections (static/js/app.js)
 
-| Region | Lines | Content |
-|--------|-------|---------|
-| CSS | 7–846 | Full stylesheet (inline) |
-| CDN Scripts | 847–849 | Plotly.js, MathJax 3, SheetJS |
-| HTML Views | 851–2495 | Sidebar + 5 view panels |
-| JS: Global Variables | 2500–3125 | State, constants, quality profiles |
-| JS: Helpers | 3126–3397 | DOM helpers, multi-channel state |
-| JS: Weights UI | 3399–3830 | Emission weight management |
-| JS: Logging & Progress | 3831–3890 | Live fit log, progress polling |
-| JS: Deposits | 3891–4205 | Run history with best-fit tracking |
-| JS: File I/O | 4206–4459 | CSV/JSON parsing, file upload |
-| JS: Plotting | 4460–4484 | Raw data charting |
-| JS: Physics | 4485–5183 | Physics helpers, alternative flows |
-| JS: Main Fitting | 5184–6385 | `fitData()` — 1 200-line orchestrator |
-| JS: Export | 6386–6802 | CSV and XLSX export |
-| JS: Utilities | 6803–6917 | Number formatting, colours |
-| JS: Lifetime Generator | 6918–7320 | Forward simulation & estimator UI |
-| JS: Initialisation | 7321–7370 | Boot sequence |
+The JavaScript is organized into 23 numbered sections with a Table of Contents at the top:
+
+| Section | Content |
+|---------|---------|
+| 1 — TOC | Section index |
+| 2 — Global Variables | State, constants, quality profiles, **ODE databases** |
+| 2d — ODE Databases | ETUC (Yb/Tm co-doped), **Single-Doped Tm** (785/1210/690 nm), ESA, PA, EMMUC, CUSC, DC |
+| 3 — DOM Helpers | `safeGetElement`, `safeSetText`, upload state |
+| 4 — API Helper | `apiPost()` — centralised fetch wrapper |
+| 5–7 — Weights UI | Emission weight management |
+| 8–9 — Logging & Progress | Live fit log, progress polling |
+| 10–12 — Deposits | Run history with best-fit tracking |
+| 13–14 — File I/O | CSV/JSON parsing, file upload |
+| 15 — Plotting | Raw data charting |
+| 16–17 — Luminescence Flow | Mechanism selection, sub-panel display, **ODE rendering** |
+| 18–20 — Main Fitting | `fitData()` orchestrator |
+| 21 — Export | CSV and XLSX export |
+| 22 — Utilities | Number formatting, colours |
+| 23 — Lifetime Generator | Forward simulation & composition estimator UI |
+| 24 — Init | Boot sequence |
 
 ---
 
@@ -118,7 +122,7 @@ The backend serves the HTML file and provides a JSON API. The frontend handles a
 | ⚗️ Sample Composition | Yb %, Tm %, host material, annealing, phonon energy |
 | ⚛️ Physics Parameters | All 20 kinetic rate constants |
 | ⚙️ Advanced Settings | Fit quality, target R², max cycles, boost weights, calibration toggles |
-| 🔧 Mechanism Parameters | ETUC / single-Tm / DC / DS sub-panels |
+| 🔧 Mechanism Parameters | ESA / PA / EMMUC / CUSC / DC / Single-doped Tm sub-panels with inline ODE equations |
 | ▶ Run Settings | Batch run configuration |
 
 ---
@@ -179,6 +183,55 @@ $$\vec{y} = [Yb_g,\ Yb_e,\ Tm_0,\ Tm_1,\ Tm_2,\ Tm_3,\ Tm_4,\ Tm_5,\ Tm_6,\ Tm_7
 
 ---
 
+## Luminescence Mechanism Selection
+
+The app supports multiple upconversion and luminescence mechanisms beyond the primary ETUC system.
+
+### Material Model Selector
+
+| Model | Description |
+|-------|-------------|
+| **Co-doped Yb/Tm** | Full 11-state ODE system with Yb³⁺ sensitizer |
+| **Single-doped Tm** | Tm³⁺ absorbs directly — no Yb sensitizer |
+
+### Upconversion Mechanisms
+
+| Mechanism | Key | Hallmark |
+|-----------|-----|----------|
+| Energy Transfer UC (ETUC) | `etuc` | Standard Yb→Tm energy transfer |
+| Excited State Absorption (ESA) | `esa` | Sequential two-photon absorption by same ion; I ∝ Φ¹ |
+| Photon Avalanche (PA) | `photon_avalanche` | CR looping with sharp pump threshold; I ∝ Φⁿ (n >> 2) |
+| Energy Migration Mediated (EMMUC) | `energy_migration_mediated` | Core–shell energy hopping architecture |
+| Cooperative Sensitization (CUSC) | `cooperative` | Two Yb simultaneously transfer to one activator; I ∝ P² |
+
+### Additional Modes
+
+| Mode | Description |
+|------|-------------|
+| **Downconversion** | Quantum cutting — one UV photon → two+ NIR photons (QY ≥ 100%) |
+| **Downshifting** | Stokes-shifted emission from single-doped system |
+
+### Single-Doped Tm³⁺ Physics
+
+Unlike co-doped ETUC, single-doped Tm³⁺ absorbs pump photons directly via ground-state absorption (GSA). Upconversion occurs through:
+
+- **ESA** — sequential absorption of a second photon from an excited state
+- **Cross-relaxation (CR)** — energy redistribution between neighbouring Tm³⁺ ions: ³H₄ + ³H₄ → ³F₄ + ³H₆
+
+Three excitation wavelengths are supported, each accessing different energy pathways:
+
+| Pump λ | Transition | ESA Target | Visible Emissions |
+|--------|-----------|------------|-------------------|
+| 785 nm | ³H₆ → ³H₄ | ³H₄ → ¹G₄ | 477 nm (¹G₄→³H₆), 645 nm (¹G₄→³F₄) |
+| 1210 nm | ³H₆ → ³H₅ | ³H₅ → ³F₂,₃ then ³H₄ → ¹G₄ | 477 nm, 645 nm (via 3-photon ladder) |
+| 690 nm | ³H₆ → ³F₂,₃ → ³H₄ | ³H₄ → ¹D₂ | 362 nm (¹D₂→³H₆), 452 nm (¹D₂→³F₄) |
+
+The ODE equations for each excitation scheme are displayed in the UI when the single-doped Tm panel is active.
+
+> **Note:** The single-doped Tm ODE solver in `app.py` needs to be updated to handle the new physics-based parameters (`sigma_gsa`, `sigma_esa`, `w_cr`, `pump_power_mw`, `tm_conc_mol`, `excitation_nm`). The current frontend sends these fields; backend implementation is pending.
+
+---
+
 ## API Reference
 
 | Endpoint | Method | Purpose |
@@ -219,11 +272,16 @@ When errors relate to **doping concentration, host material, or annealing temper
 ```
 test4/
 ├── app.py                            # Backend server (Python/Flask)
-├── interactive_fitter copy.html      # Frontend UI (HTML/CSS/JS)
+├── interactive_fitter copy.html      # Frontend UI (HTML template only)
+├── static/
+│   ├── css/
+│   │   └── style.css                 # All CSS styles
+│   ├── js/
+│   │   └── app.js                    # All JavaScript logic + ODE databases
+│   └── plots/                        # Generated plot images
 ├── emission_weights.json             # Persisted weight settings
 ├── README.md                         # This file
 ├── README_CODEBOOK_LINE_BY_LINE.md   # Detailed line-by-line codebook
-├── static/plots/                     # Generated plot images
 ├── Images/                           # Reference images
 ├── copy/                             # Manual backups
 └── Modelling/                        # Supplementary model files
