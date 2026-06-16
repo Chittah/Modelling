@@ -1001,8 +1001,11 @@ function createFitRequestId() {
 }
 
 // CONTINUE FIT button logic
+let continueFitVisible = false;
+
 function setFitStoppedState(isStopped) {
     const continueBtn = document.getElementById('continueFitButton');
+    continueFitVisible = isStopped;
     if (continueBtn) {
         continueBtn.style.display = isStopped ? 'inline-block' : 'none';
     }
@@ -1016,11 +1019,10 @@ function updateContinueFitButton() {
     const cancelBtn = document.getElementById('cancelFitButton');
     const continueBtn = document.getElementById('continueFitButton');
     if (fitBtn && cancelBtn && continueBtn) {
-        // Fit is stopped if FIT DATA is enabled OR CANCEL FIT is disabled
         const fitDisabled = fitBtn.disabled;
         const cancelDisabled = cancelBtn.disabled;
-        // Show CONTINUE if fit is stopped (FIT DATA disabled, CANCEL disabled)
-        continueBtn.style.display = (fitDisabled && cancelDisabled) ? 'inline-block' : 'none';
+        const shouldShow = continueFitVisible || (fitDisabled && cancelDisabled);
+        continueBtn.style.display = shouldShow ? 'inline-block' : 'none';
     }
 }
 
@@ -3040,6 +3042,7 @@ window.applyPhysicsSettings = function() {
 // ==================== 19. FITTING ====================
 
 window.fitData = async function(options = {}) {
+    continueFitVisible = false;
     const internalRun = Boolean(options.internalRun);
     const fitBtn = safeGetElement('fitDataButton');
     if (!internalRun && (!fitBtn || fitBtn.disabled)) {
@@ -4293,7 +4296,15 @@ window.fitData = async function(options = {}) {
             let resultsErrorHtml = '<p style="color: #999; text-align: center;">Fitting failed. Check console for details.</p>';
 
             if (err.message.includes('Failed to fetch')) {
-                errorMessage = 'Cannot connect to backend. Make sure Flask server is running on port 5050';
+                errorMessage = 'Cannot connect to backend. Make sure Flask server is running on port 5050. Then click CONTINUE FIT to retry.';
+                continueFitVisible = true;
+                setFitStoppedState(true);
+                resultsErrorHtml = `
+                    <div style="border:1px solid #fee2e2; background:#fff1f2; color:#991b1b; border-radius:10px; padding:12px; margin:10px 0; text-align:center;">
+                        <strong>Connection failed:</strong> Flask backend is unreachable.
+                        <div style="margin-top:8px; font-size:13px; opacity:0.9;">Start the server on port 5050 and click CONTINUE FIT to retry.</div>
+                    </div>
+                `;
             } else if (err.message.includes('not_configured')) {
                 errorMessage = 'Physics not configured. Click CONFIGURE button first';
             } else if (backendCode === 'MISSING_DOPING' || (backendStatus === 400 && /doping/i.test(err.message))) {
@@ -4705,7 +4716,7 @@ window.downloadAllResultsExcel = async function() {
 
         // ---- Sheet 1: Summary — one row per deposited run ----
         const summaryHeader = [
-            'Run#', 'File', 'Deposited At',
+            'Run#', 'File', 'Deposited At', 'Best Fit',
             'Emission (nm)', 'Host', 'Yb (mol%)', 'Tm (mol%)', 'Anneal (°C)',
             'R²', 'Timing Pass', 'Physically Accepted', 'Failed Terms',
             'Peak Ratio Error', 'Peak Target', 'Rise Ratio Error', 'Rise Target', 'Decay Ratio Error', 'Decay Target',
@@ -4732,6 +4743,7 @@ window.downloadAllResultsExcel = async function() {
                 idx + 1,
                 dep.fileName || '',
                 dep.createdAtLabel || dep.createdAt || '',
+                dep.isBestFit ? 'Yes' : 'No',
                 ps.emission  || '',
                 ps.host      || '',
                 fmtN(Number(ps.doping_yb)),
@@ -4783,7 +4795,7 @@ window.downloadAllResultsExcel = async function() {
         });
         const paramKeys = Array.from(allParamKeys).sort();
 
-        const paramsHeader = ['Run#', 'File', 'Emission (nm)', 'R²', ...paramKeys];
+        const paramsHeader = ['Run#', 'File', 'Emission (nm)', 'Best Fit', 'R²', ...paramKeys];
         const paramsRows   = [paramsHeader];
         plotDeposits.forEach((dep, idx) => {
             const ps   = dep.payloadSummary  || {};
@@ -4792,6 +4804,7 @@ window.downloadAllResultsExcel = async function() {
                 idx + 1,
                 dep.fileName || '',
                 ps.emission  || '',
+                dep.isBestFit ? 'Yes' : 'No',
                 (typeof dep.r2 === 'number' && isFinite(dep.r2)) ? dep.r2 : '',
             ];
             paramKeys.forEach(k => {

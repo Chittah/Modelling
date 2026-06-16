@@ -20,11 +20,11 @@
 
         <div class="main-content" style="display: flex; gap: 0;">
             <!-- Sidebar Menu -->
-            <div class="sidebar-menu" style="width: 250px; background: linear-gradient(180deg, #2c3e50 0%, #34495e 100%); color: white; min-height: calc(100vh - 110px); padding: 0; box-shadow: 2px 0 10px rgba(0,0,0,0.1);">
+            <div class="sidebar-menu" style="width: 250px; background: linear-gradient(180deg, #2c3e50 0%, #34495e 100%); color: white; min-height: calc(100vh - 110px); padding: 0; box-shadow: 2px 0 10px rgba(0,0,0,0.1); display: flex; flex-direction: column;">
                 <div style="padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.1);">
                     <h3 style="margin: 0; font-size: 16px; color: #ecf0f1;">🔬 TM Analyzer</h3>
                 </div>
-                <nav style="padding: 10px 0;">
+                <nav style="padding: 10px 0; flex: 1; overflow-y: auto;">
                     <a href="#" class="menu-item active" onclick="showView('home'); return false;" data-view="home" style="display: flex; align-items: center; gap: 12px; padding: 15px 20px; color: white; text-decoration: none; transition: all 0.3s; border-left: 4px solid #3498db; background: rgba(52, 152, 219, 0.2);">
                         <span style="font-size: 20px;">🏠</span>
                         <span style="font-size: 14px; font-weight: 500;">Home</span>
@@ -46,7 +46,7 @@
                         <span style="font-size: 14px; font-weight: 500;">Help & Troubleshooting</span>
                     </a>
                 </nav>
-                <div style="padding: 20px; border-top: 1px solid rgba(255,255,255,0.1); position: absolute; bottom: 0; width: 210px; background: #34495e;">
+                <div style="padding: 20px; border-top: 1px solid rgba(255,255,255,0.1); background: #34495e; margin-top: auto;">
                     <div style="font-size: 11px; color: #95a5a6; line-height: 1.6;">
                         <div style="margin-bottom: 8px;"><strong style="color: #ecf0f1;">Status:</strong> <span id="sidebarStatus" style="color: #27ae60;">Ready</span></div>
                         <div style="margin-bottom: 8px;"><strong style="color: #ecf0f1;">Files:</strong> <span id="sidebarFileCount" style="color: #3498db; font-weight: 600;">0</span></div>

@@ -1002,8 +1002,8 @@ def run_fitting(time_ms, intensity, pulse_us,
 
         tail_res = 0.55 * sqrt_tail[tail_mask] * (measured[tail_mask] - fitted[tail_mask])
 
-        area_m = np.trapz(measured[tail_mask], t_arr[tail_mask])
-        area_f = np.trapz(fitted[tail_mask], t_arr[tail_mask])
+        area_m = np.trapezoid(measured[tail_mask], t_arr[tail_mask])
+        area_f = np.trapezoid(fitted[tail_mask], t_arr[tail_mask])
         area_pen = 4.0 * (area_f - area_m) / (abs(area_m) + 1e-12)
         return tail_res, area_pen
 
@@ -1023,8 +1023,8 @@ def run_fitting(time_ms, intensity, pulse_us,
         early_res = (0.95 * early_rise_boost) * (measured[early_mask] - fitted[early_mask])
 
         # Penalize integrated early overshoot/undershoot
-        area_m = np.trapz(measured[early_mask], t_arr[early_mask])
-        area_f = np.trapz(fitted[early_mask], t_arr[early_mask])
+        area_m = np.trapezoid(measured[early_mask], t_arr[early_mask])
+        area_f = np.trapezoid(fitted[early_mask], t_arr[early_mask])
         area_pen = (5.5 * early_rise_boost) * (area_f - area_m) / (abs(area_m) + 1e-12)
         return early_res, area_pen
 
@@ -1059,8 +1059,8 @@ def run_fitting(time_ms, intensity, pulse_us,
         ])
 
         # Scalar guard for total pre-peak overshoot area.
-        area_over = np.trapz(np.maximum(fitted[pre_peak_mask] - measured[pre_peak_mask], 0.0), t_arr[pre_peak_mask])
-        area_ref = np.trapz(np.clip(measured[pre_peak_mask], 0.0, np.inf), t_arr[pre_peak_mask]) + 1e-12
+        area_over = np.trapezoid(np.maximum(fitted[pre_peak_mask] - measured[pre_peak_mask], 0.0), t_arr[pre_peak_mask])
+        area_ref = np.trapezoid(np.clip(measured[pre_peak_mask], 0.0, np.inf), t_arr[pre_peak_mask]) + 1e-12
         area_over_pen = 9.0 * (area_over / area_ref)
         return overshoot_res, area_over_pen
 

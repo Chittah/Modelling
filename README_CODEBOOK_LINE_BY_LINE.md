@@ -7,6 +7,10 @@
 
 ---
 
+sudo apt install python3-pip
+user@DESKTOP-5ETV7KT:~/Modelling$ python3 -m venv venv
+user@DESKTOP-5ETV7KT:~/Modelling$ source venv/bin/activate
+(venv) user@DESKTOP-5ETV7KT:~/Modelling$ pip install flask
 ## Table of Contents
 
 | # | Section | File | Lines |
