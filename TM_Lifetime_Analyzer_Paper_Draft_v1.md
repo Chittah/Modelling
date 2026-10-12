@@ -318,6 +318,48 @@ In cases where a desired emission wavelength (e.g., 362 nm) had no measurement, 
 
 The model is most sensitive to phonon energy (affects W_nr exponentially). Small changes in annealing temperature (±50 K) can shift predicted lifetimes by 5-15%, underscoring the importance of precise thermal control and documentation.
 
+#### 3.6.4 Interpretation of direct Tm excitation in Yb-containing samples
+
+The presence of Yb³⁺ in a Tm³⁺-doped specimen does not, by itself, establish that Yb³⁺ is excited
+under a pump wavelength selected to excite Tm³⁺. Interpretation of transients recorded under direct
+Tm excitation (for example, at nominal 260, 356, or 466 nm) therefore requires separation of the
+experimentally observed response from the proposed microscopic mechanism. The absorbing species
+should be established from the sample's absorption or excitation spectrum, together with the pump
+wavelength, bandwidth, and incident power. Possible absorption by Tm³⁺, Yb³⁺, the host lattice, or
+defects should not be inferred solely from dopant composition.
+
+Yb incorporation can affect a measured Tm³⁺ transient through more than one route. Candidate
+effects include Tm-to-Yb energy transfer from an excited Tm³⁺ state, feeding of Tm³⁺ by excited
+Yb³⁺ if Yb³⁺ is populated under the measurement conditions, changes to Tm–Tm cross-relaxation, and
+changes in the local crystal environment, site occupancy, or defect population caused by
+co-doping and sample processing. The relevance and direction of these effects depend on energy
+matching, spectral overlap, concentration, and excitation conditions. A difference in emission
+intensity or lifetime alone does not uniquely identify which process is responsible.
+
+Accordingly, mechanistic comparisons should use matched Tm-only and Tm/Yb samples and report the
+actual dopant concentrations and concentration convention, host composition, synthesis and
+annealing history, excitation spectrum and power, pulse profile and repetition rate, detector
+response, time-zero calibration, gating, filters, and baseline and normalization procedure.
+Concentration series, excitation spectra, pump-power dependence, and lifetime comparisons can
+provide complementary evidence. In particular, intensity changes should be interpreted cautiously
+because absorption, scattering, reabsorption, and collection efficiency can change independently
+of the excited-state kinetics.
+
+The downshifting co-doped implementation in this work uses the Tm³⁺ rate equations and adds an
+effective Yb-concentration-dependent loss from the modeled \(^{3}H_4\) and \(^{1}G_4\) populations.
+The corresponding loss terms are proportional to \(K_{\mathrm{yb}}[{\rm Yb}]\), with a return term
+to the Tm ground-state population in the implemented equations. The model does not track an
+excited-Yb population in this downshifting mode, nor does it describe wavelength-dependent Yb
+absorption or explicit Tm-to-Yb and Yb-to-Tm population transfer. Thus, \(K_{\mathrm{yb}}\) should be
+reported as an effective model parameter rather than a directly measured microscopic transfer
+constant, unless independently validated. In particular, this implementation cannot determine
+whether Yb³⁺ is excited by a given 260, 356, or 466 nm experiment.
+
+The full Yb/Tm population model used for the separate upconversion workflow is a different model
+and should not be conflated with this downshifting approximation. Conclusions about Yb excitation
+or sensitization under direct Tm pumping require independent spectroscopic evidence and, where
+necessary, a model that explicitly includes the relevant Yb³⁺ states and transfer pathways.
+
 ---
 
 ## 4. CONCLUSION
@@ -386,4 +428,3 @@ The framework is publicly available [link to repository] and welcomes community 
 - *Advanced Optical Materials*
 - *ACS Photonics*
 - *Nanoscale* (if nanocrystal-focused)
-

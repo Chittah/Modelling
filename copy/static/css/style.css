@@ -359,6 +359,21 @@ input[type="number"]:focus {
     background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
 }
 
+#dsBatchConfig.is-clicked,
+#dsBatchRun.is-clicked {
+    animation: ds-batch-click-feedback 450ms ease-out;
+}
+
+#dsBatchRun.is-running {
+    filter: brightness(1.2);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3), 0 6px 20px rgba(67, 56, 202, 0.5);
+}
+
+@keyframes ds-batch-click-feedback {
+    0%, 100% { filter: brightness(1); }
+    45% { filter: brightness(1.35); }
+}
+
 
 /* ==========================================================
    12. FILE UPLOAD (drag-drop zone)
@@ -988,3 +1003,4 @@ input[type="number"]:focus {
         font-size: 0.9em;
     }
 }
+.single-tm-mode .co-doped-only { display: none !important; }

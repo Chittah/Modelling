@@ -1225,8 +1225,8 @@ function readCurrentFolderSampleConfig() {
         dopingTm: safeGetElement('dopingTmInput')?.value || '',
         host: safeGetElement('hostSelect')?.value || '',
         anneal: safeGetElement('annealSelect')?.value || '',
-        pulseWidthUs: safeGetElement('pulseWidthUs')?.value || '',
-        timeUnit: safeGetElement('timeUnit')?.value || '',
+        pulseWidthUs: safeGetElement('pulseWidthUs')?.value || '400',
+        timeUnit: safeGetElement('timeUnit')?.value || 'ns',
         excitationWavelength: safeGetElement('excitationWavelength')?.value || '980',
     };
 }
@@ -1242,8 +1242,8 @@ function applyFolderSampleConfig(config) {
     setValue('dopingTmInput', config.dopingTm);
     setValue('hostSelect', config.host);
     setValue('annealSelect', config.anneal);
-    setValue('pulseWidthUs', config.pulseWidthUs);
-    setValue('timeUnit', config.timeUnit);
+    setValue('pulseWidthUs', config.pulseWidthUs || '400');
+    setValue('timeUnit', config.timeUnit || 'ns');
     setValue('excitationWavelength', config.excitationWavelength);
     updateExcitationEnergy();
 }
@@ -1374,7 +1374,7 @@ function renderMultiChannelRows() {
             lastCarryForwardMarker.folderId === activeFolder.id &&
             lastCarryForwardMarker.slotId === slot.id
         );
-        const emissionOptions = EMISSION_OPTIONS.map(opt => `
+        const emissionOptions = getEmissionOptionsForMode().map(opt => `
             <option value="${opt.value}" ${state.emission === opt.value ? 'selected' : ''}>${opt.label}</option>
         `).join('');
         const badgeColor = slot.role === 'mandatory' ? '#b45309' : '#475569';
@@ -1847,6 +1847,15 @@ function savePlotDeposits() {
     try {
         localStorage.setItem('tm_plot_deposits', JSON.stringify(plotDeposits));
     } catch (err) {
+        // Quota hit: keep metadata (incl. isBestFit) for every deposit, but only keep curves for the newest ones.
+        for (const keep of [10, 4, 0]) {
+            try {
+                const slim = plotDeposits.map((d, i) => i >= plotDeposits.length - keep ? d
+                    : { ...d, time: [], measured: [], fitted: [], resultsHtml: d.isBestFit ? d.resultsHtml : '' });
+                localStorage.setItem('tm_plot_deposits', JSON.stringify(slim));
+                return;
+            } catch (e2) { /* try a smaller footprint */ }
+        }
         console.warn('Could not persist plot deposits:', err);
     }
 }
@@ -2438,7 +2447,17 @@ function plotRawData() {
 window.updateActivePhysics = function() {
     const emission = safeGetElement('emissionSelect')?.value;
     if (!emission) return;
-    
+        if (isDownshiftFlow()) {
+        updateSingleTmContext();
+        const excSel = resolveSingleTmExcitation();
+        const lvlSel = SINGLE_TM_EMISSION_LEVEL[emission];
+        const stSel = (excSel && lvlSel) ? odeDatabaseSingleTm[String(excSel.key)]?.states[SINGLE_TM_TMKEY[lvlSel]] : null;
+        safeSetText('math-ode', stSel ? '$$' + stSel.latex + '$$' : '$$\\text{Emission not populated by this excitation}$$');
+        safeSetHtml('pop-logic', stSel ? stSel.population.map(t => '• ' + t).join('<br>') : '');
+        safeSetHtml('depop-logic', stSel ? stSel.depopulation.map(t => '• ' + t).join('<br>') : '');
+        if (typeof MathJax !== 'undefined') MathJax.typesetPromise([safeGetElement('math-ode')]).catch(err => console.log('MathJax error:', err));
+        return;
+    }
     const odeData = odeDatabase[emission];
     if (!odeData) return;
     
@@ -2467,6 +2486,7 @@ window.updateExcitationEnergy = function() {
     const energyKjMol = energyEv * 96.485;
     energyDisplay.textContent = `⚡ Energy: ${energyEv.toFixed(3)} eV | ${energyKjMol.toFixed(1)} kJ/mol`;
     energyDisplay.style.color = '#667eea';
+    if (isSingleTmMode()) updateSingleTmOdeDisplay();
 };
 
 window.selectElement = function(symbol, type, evt) {
@@ -2652,6 +2672,20 @@ window.syncPhysicsConstants = function() {
 
 // --- 17b. Multi-Channel Build & Luminescence Flow ---
 function buildMultiChannelFitSequence(slotState = multiChannelSlotState) {
+    if (isSingleTmMode()) {
+        const excSel = resolveSingleTmExcitation();
+        const seq = [];
+        Object.entries(slotState || {}).forEach(([slotId, item]) => {
+            if (!item?.data || !item.emission || !singleTmReachable(excSel, item.emission)) return;
+            if (seq.some(s => s.emission === item.emission)) return;
+            seq.push({ emission: item.emission, slotId, fileName: item.fileName, data: item.data,
+                       sourceEmission: item.emission, usedFallbackSource: false });
+        });
+        seq.sort((a, b) => SINGLE_TM_CASCADE.indexOf(SINGLE_TM_EMISSION_LEVEL[a.emission])
+                         - SINGLE_TM_CASCADE.indexOf(SINGLE_TM_EMISSION_LEVEL[b.emission]));
+        if (!seq.length) throw new Error('Load at least one emission that this excitation can populate.');
+        return seq;
+    }
     const emissionToSlot = {};
     Object.entries(slotState || {}).forEach(([slotId, item]) => {
         if (item && item.data && item.emission && !emissionToSlot[item.emission]) {
@@ -2747,49 +2781,239 @@ function collectMechanismParams() {
 }
 
 function collectSingleTmParams() {
-    return {
-        excitation_nm: parseInt(safeGetElement('singleTmExcWavelength')?.value || '785'),
-        sigma_gsa: parseFloat(safeGetElement('singleTmSigmaGSA')?.value || '0.5'),
-        sigma_esa: parseFloat(safeGetElement('singleTmSigmaESA')?.value || '0.3'),
-        w_cr: parseFloat(safeGetElement('singleTmWcr')?.value || '2.0'),
-        pump_power_mw: parseFloat(safeGetElement('singleTmPumpPower')?.value || '200'),
-        tm_conc_mol: parseFloat(safeGetElement('singleTmConc')?.value || '1.0'),
-        rise_ms: parseFloat(safeGetElement('flowRiseMs')?.value || '0.08'),
-    };
+    // kept for backward compatibility with older payload code; the single-Tm fit reads the Data/Sample tabs
+    return { excitation_nm: parseInt(document.getElementById('excitationWavelength')?.value || '0', 10) };
 }
 
-// --- Single-doped Tm ODE display (called on wavelength change) ---
-window.updateSingleTmOdeDisplay = function() {
-    const wl = safeGetElement('singleTmExcWavelength')?.value || '785';
-    const db = odeDatabaseSingleTm[wl];
-    const eqDiv = safeGetElement('singleTmOdeEquations');
-    const emDiv = safeGetElement('singleTmEmissions');
-    if (!db || !eqDiv) return;
-
-    let html = '<div style="font-size:10px;font-weight:700;color:#4338ca;margin-bottom:6px;">' + db.excitation_label + '</div>';
-    html += '<div style="font-size:9px;color:#475569;margin-bottom:8px;line-height:1.3;">' + db.description + '</div>';
-    for (const [key, state] of Object.entries(db.states)) {
-        html += '<div style="margin-bottom:6px;padding:4px 6px;background:#f8fafc;border-radius:3px;">';
-        html += '<div style="font-size:9px;font-weight:600;color:#1e293b;margin-bottom:2px;">' + key + ' — ' + state.label + '</div>';
-        html += '<div style="font-size:12px;">\\(' + state.latex + '\\)</div>';
-        if (state.observable) {
-            html += '<div style="font-size:9px;color:#059669;margin-top:2px;">📍 ' + state.observable + '</div>';
-        }
-        html += '</div>';
-    }
-    eqDiv.innerHTML = html;
-
-    // Emissions info
-    if (emDiv) {
-        let emHtml = '<strong>Observable emissions for ' + wl + ' nm excitation:</strong><br>';
-        for (const state of Object.values(db.states)) {
-            if (state.observable) emHtml += '• ' + state.observable + '<br>';
-        }
-        emDiv.innerHTML = emHtml;
-    }
-    // Re-typeset MathJax
-    if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([eqDiv]);
+// ===== SINGLE-DOPED Tm HELPERS (only used when Material Model = Single-doped Tm) =====
+const SINGLE_TM_EXCITATIONS = {
+  260: {entry:'P2'}, 356: {entry:'D2'}, 466: {entry:'G4'},
+  785: {entry:'H4', esa:'G4'}, 690: {entry:'H4', esa:'D2'}, 1210: {entry:'H4', esa:'G4'},
 };
+const SINGLE_TM_EMISSION_LEVEL = {'346':'I6','345':'I6','362':'D2','454':'D2','452':'D2','477':'G4','645':'G4','775':'H4','1800':'F4'};
+const SINGLE_TM_CASCADE = ['P2','I6','D2','G4','H4','F4'];
+const SINGLE_TM_LEVEL_LABEL = {P2:'³P₂', I6:'¹I₆', D2:'¹D₂', G4:'¹G₄', H4:'³H₄', F4:'³F₄'};
+const SINGLE_TM_TMKEY = {P2:'Tm8', I6:'Tm7', D2:'Tm6', G4:'Tm5', H4:'Tm3', F4:'Tm1'};
+const SINGLE_TM_EXTRA_EMISSIONS = [
+  { value: '454', label: '454 nm - ¹D₂ → ³F₄' },
+  { value: '346', label: '346 nm - ¹I₆ → ³F₄' },
+];
+const SINGLE_TM_PRIORS = {
+  A10:0.12, A30:0.35, A31:0.25, A50:0.6, A51:0.5, A53:0.05, A60:1.0, A61:3.0, A63:0.3,
+  A70:3.0, A71:4.0, W87:500, W76:1.0, W65:0.5, Kcr:2.0, Kyb:0.5,
+};
+
+function isSingleTmMode() {
+  return (document.getElementById('materialModelSelect')?.value || '').toLowerCase() === 'single_doped_tm';
+}
+
+// True for any downshifting run (single-doped Tm or co-doped Yb/Tm); both use the Tm ODE engine.
+function isDownshiftFlow() {
+  return isSingleTmMode() ||
+    (document.getElementById('luminescenceTypeSelect')?.value || '').toLowerCase() === 'downshifting';
+}
+
+// Emissions offered per excitation. Other excitations fall back to level reachability.
+const SINGLE_TM_ALLOWED_EMISSIONS = { 260: ['346'], 356: ['454', '775'], 466: ['645'] };
+
+// ETUC / other modes see exactly the original emission list; single-doped mode gets 454 and 346 added.
+function getEmissionOptionsForMode() {
+  return isSingleTmMode() ? EMISSION_OPTIONS.concat(SINGLE_TM_EXTRA_EMISSIONS) : EMISSION_OPTIONS;
+}
+
+function syncSingleTmEmissionOptions(on) {
+  const sel = document.getElementById('emissionSelect');
+  if (!sel) return;
+  SINGLE_TM_EXTRA_EMISSIONS.forEach(opt => {
+    const existing = Array.from(sel.options).find(o => o.value === opt.value && o.dataset.singleTm === '1');
+    if (on && !existing && !Array.from(sel.options).some(o => o.value === opt.value)) {
+      const o = document.createElement('option');
+      o.value = opt.value; o.textContent = opt.label; o.dataset.singleTm = '1';
+      sel.appendChild(o);
+    }
+    if (!on && existing) {
+      if (sel.value === opt.value) sel.value = '';
+      existing.remove();
+    }
+  });
+}
+
+function resolveSingleTmExcitation() {
+  const nm = parseFloat(document.getElementById('excitationWavelength')?.value);
+  if (!Number.isFinite(nm)) return null;
+  let best = null;
+  Object.keys(SINGLE_TM_EXCITATIONS).forEach(k => {
+    if (Math.abs(k - nm) <= 10 && (best === null || Math.abs(k - nm) < Math.abs(best - nm))) best = Number(k);
+  });
+  return best === null ? null : { key: best, ...SINGLE_TM_EXCITATIONS[best] };
+}
+
+function singleTmReachable(exc, emission) {
+  const lvl = SINGLE_TM_EMISSION_LEVEL[String(emission)];
+  if (!exc || !lvl) return false;
+  const allowed = SINGLE_TM_ALLOWED_EMISSIONS[exc.key];
+  if (allowed && !allowed.includes(String(emission))) return false;
+  const top = Math.min(SINGLE_TM_CASCADE.indexOf(exc.entry),
+                       exc.esa ? SINGLE_TM_CASCADE.indexOf(exc.esa) : 99);
+  return SINGLE_TM_CASCADE.indexOf(lvl) >= top;
+}
+
+function collectSingleTmPriors() {
+  const out = {};
+  Object.keys(SINGLE_TM_PRIORS).forEach(k => {
+    const v = parseFloat(document.getElementById('stp_' + k)?.value);
+    if (Number.isFinite(v) && v >= 0) out[k] = v;
+  });
+  return out;
+}
+
+// Extra fields merged into the /fit payload. Returns {} outside single-doped mode (ETUC payload unchanged).
+function singleTmPayloadExtras(transferEnabled) {
+  if (!isDownshiftFlow()) return {};
+  return {
+    doping_yb: isSingleTmMode() ? 0 : (parseFloat(document.getElementById('dopingYbInput')?.value) || 0),
+    single_tm_prior: collectSingleTmPriors(),
+    single_tm_lock_G: transferEnabled ? (window.singleTmCarry?.G ?? null) : null,
+  };
+}
+
+function renderSingleTmPriorGrid() {
+  const host = document.getElementById('singleTmPriorGrid');
+  if (!host || host.dataset.ready) return;
+  host.dataset.ready = '1';
+  host.innerHTML = Object.entries(SINGLE_TM_PRIORS).map(([k, v]) => `
+    <div><label style="font-size:9px;color:#6b7280;">${k}</label>
+    <input type="number" id="stp_${k}" value="${v}" step="any" min="0"
+      style="width:100%;padding:5px;border-radius:4px;border:1px solid #d1d5db;font-size:11px;"></div>`).join('');
+}
+
+window.updateSingleTmContext = function() {
+  const el = document.getElementById('singleTmContext');
+  const exc = resolveSingleTmExcitation();
+  const tm = document.getElementById('dopingTmInput')?.value || '–';
+  const yb = parseFloat(document.getElementById('dopingYbInput')?.value) || 0;
+  const emSel = document.getElementById('emissionSelect');
+  if (emSel) Array.from(emSel.options).forEach(o => {
+    if (o.value) o.disabled = isSingleTmMode() && exc ? !singleTmReachable(exc, o.value) : false;
+  });
+  if (!el) return;
+  if (!exc) {
+    el.innerHTML = '<span style="color:#b91c1c;">Excitation not supported (±10 nm of 260, 356, 466, 690, 785 or 1210 nm). For 980 nm Yb-sensitised data switch Material Model to Co-doped Yb/Tm.</span>';
+    return;
+  }
+  const emission = emSel?.value;
+  const bad = emission && !singleTmReachable(exc, emission);
+  el.innerHTML = `Excitation <b>${exc.key} nm</b> enters <b>${SINGLE_TM_LEVEL_LABEL[exc.entry]}</b>`
+    + (exc.esa ? ` (ESA → ${SINGLE_TM_LEVEL_LABEL[exc.esa]})` : '')
+    + ` | Tm <b>${tm}</b> mol%`
+    + (isSingleTmMode() ? '' : ` | Yb <b>${yb > 0 ? yb + ' mol% (Tm→Yb loss fitted)' : '0'}</b>`)
+    + (bad ? '<br><span style="color:#b91c1c;">Selected emission is not populated by this excitation.</span>' : '');
+};
+
+// Called by the existing applyMechanismSubPanel() for single-doped mode, so it also fills the rest of the panel.
+window.updateSingleTmOdeDisplay = function() {
+  renderSingleTmPriorGrid();
+  updateSingleTmContext();
+  const exc = resolveSingleTmExcitation();
+  const eqDiv = document.getElementById('singleTmOdeEquations');
+  const emDiv = document.getElementById('singleTmEmissions');
+  if (!eqDiv) return;
+  const db = exc ? odeDatabaseSingleTm[String(exc.key)] : null;
+  if (!db) {
+    eqDiv.innerHTML = exc || (!isDownshiftFlow() && document.getElementById('excitationWavelength')?.value)
+      ? '<span style="color:#b91c1c;font-size:10px;">No ODE set for this excitation wavelength.</span>'
+      : '<span style="color:#475569;font-size:10px;">Select an excitation for a file to show its ODE set.</span>';
+    return;
+  }
+  let html = `<div style="font-size:10px;font-weight:700;color:#4338ca;margin-bottom:4px;">${db.excitation_label}</div>`
+    + `<div style="font-size:9px;color:#475569;margin-bottom:6px;line-height:1.3;">${db.description}</div>`;
+  // Only levels from the excitation entry down to the emitting level shape the measured trace; the rest are collapsed.
+  const emNm = String(window.singleTmActiveEmission || document.getElementById('emissionSelect')?.value || '');
+  const emLvl = SINGLE_TM_EMISSION_LEVEL[emNm];
+  const casc = SINGLE_TM_CASCADE;
+  const top = Math.min(casc.indexOf(exc.entry), exc.esa ? casc.indexOf(exc.esa) : 99);
+  const relKeys = new Set();
+  if (emLvl) casc.forEach((l, i) => { if (i >= top && i <= casc.indexOf(emLvl)) relKeys.add(SINGLE_TM_TMKEY[l]); });
+  const card = (key, st) => `<div style="margin-bottom:5px;padding:4px 6px;background:#f8fafc;border-radius:3px;">
+      <div style="font-size:9px;font-weight:600;color:#1e293b;">${key} — ${st.label}</div>
+      <div style="font-size:12px;">\\(${st.latex}\\)</div>
+      ${st.observable ? `<div style="font-size:9px;color:#059669;">📍 ${st.observable}</div>` : ''}</div>`;
+  const entries = Object.entries(db.states);
+  if (relKeys.size) {
+    html += `<div style="font-size:9px;color:#059669;margin-bottom:4px;">Pathways that shape the ${emNm} nm trace:</div>`
+      + entries.filter(([k]) => relKeys.has(k)).map(([k, s]) => card(k, s)).join('');
+    const rest = entries.filter(([k]) => !relKeys.has(k));
+    if (rest.length) html += `<details style="margin-top:4px;"><summary style="font-size:9px;color:#6b7280;cursor:pointer;">Other levels in the cascade (do not affect this fit)</summary>`
+      + rest.map(([k, s]) => card(k, s)).join('') + '</details>';
+  } else {
+    html += entries.map(([k, s]) => card(k, s)).join('');
+  }
+  eqDiv.innerHTML = html;
+  if (emDiv) emDiv.innerHTML = '<strong>Observable emissions:</strong><br>' +
+    Object.values(db.states).filter(s => s.observable).map(s => '• ' + s.observable).join('<br>');
+  if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([eqDiv]);
+};
+
+// Single-doped UI. Called from the top of updateLuminescenceFlowUi(); that function's own code is untouched.
+function applySingleTmUi() {
+  // remember the Luminescence Family so it can be restored when leaving single-doped mode
+  const lumType = document.getElementById('luminescenceTypeSelect');
+  if (lumType && !document.body.classList.contains('single-tm-mode')) lumType.dataset.prev = lumType.value;
+
+  document.body.classList.add('single-tm-mode');
+  const show = (id, on, shown = '') => { const el = document.getElementById(id); if (el) el.style.display = on ? shown : 'none'; };
+  if (lumType) lumType.value = 'downshifting';
+  show('upconversionMechanismWrap', false);
+  show('ribbonTabPhysics', false);        // phonon / NR / Yb anchors are co-doped concepts
+  show('ribbonTabAdvanced', true);        // fit settings are shared with ETUC
+  show('ribbonTabMechanism', true);
+  show('ribbonTabRunsettings', false);    // simulate / time range / points: not used, this is a fit
+  const mechTab = document.getElementById('ribbonTabMechanism');
+  if (mechTab) mechTab.textContent = '🔬 Single-Tm Model';
+  show('genericDecayTiming', false, 'flex');
+
+  const ybIn = document.getElementById('dopingYbInput');
+  if (ybIn?.parentElement) ybIn.parentElement.style.display = 'none';   // no Yb in single-doped Tm
+  const exIn = document.getElementById('excitationWavelength');
+  if (exIn) { exIn.dataset.origMin = exIn.dataset.origMin || exIn.min; exIn.dataset.origMax = exIn.dataset.origMax || exIn.max; exIn.min = '200'; exIn.max = '1600'; }
+
+  const active = Array.from(document.querySelectorAll('.ribbon-content')).find(e => e.style.display === 'block');
+  if (active && (active.id === 'ribbonContentPhysics' || active.id === 'ribbonContentRunsettings')) showRibbonTab('mechanism');
+
+  const hint = document.getElementById('etucFlowHint');
+  if (hint) {
+    hint.style.display = 'block';
+    hint.style.borderLeftColor = '#10b981'; hint.style.background = '#ecfdf5'; hint.style.color = '#065f46';
+    hint.textContent = 'Single-doped Tm: ODE fit of rise and decay. Excitation, Tm and Yb are read from the Data File and Sample tabs; Yb is optional.';
+  }
+  const fitBtn = document.getElementById('fitDataButton');
+  if (fitBtn) fitBtn.textContent = (typeof getActiveUploadMode === 'function' && getActiveUploadMode() === 'multi') ? '⚡ FIT LOADED CHANNELS' : '⚡ FIT DATA';
+
+  syncSingleTmEmissionOptions(true);
+  if (typeof renderMultiChannelRows === 'function') renderMultiChannelRows();
+  applyMechanismSubPanel(getLuminescenceFlowSelection());
+}
+
+// Undo only what applySingleTmUi changed. Returns true if it actually left single-doped mode.
+function leaveSingleTmUi() {
+  if (!document.body.classList.contains('single-tm-mode')) return false;
+  document.body.classList.remove('single-tm-mode');
+  const lt = document.getElementById('luminescenceTypeSelect');
+  if (lt) lt.value = lt.dataset.prev || 'upconversion';
+  const mechTab = document.getElementById('ribbonTabMechanism');
+  if (mechTab) mechTab.textContent = '🔧 Mechanism Parameters';
+  const g = document.getElementById('genericDecayTiming');
+  if (g) g.style.display = 'flex';
+  const ybIn = document.getElementById('dopingYbInput');
+  if (ybIn?.parentElement) ybIn.parentElement.style.display = '';
+  const exIn = document.getElementById('excitationWavelength');
+  if (exIn) { if (exIn.dataset.origMin) exIn.min = exIn.dataset.origMin; if (exIn.dataset.origMax) exIn.max = exIn.dataset.origMax; }
+  const sel = document.getElementById('emissionSelect');
+  if (sel) Array.from(sel.options).forEach(o => { o.disabled = false; });
+  syncSingleTmEmissionOptions(false);
+  if (typeof renderMultiChannelRows === 'function') renderMultiChannelRows();
+  return true;
+}
 
 // --- Render ODEs for any generic mechanism panel ---
 function renderGenericMechanismOdes(db, targetDivId) {
@@ -2862,7 +3086,8 @@ function applyMechanismSubPanel(flow) {
 
 window.updateLuminescenceFlowUi = function() {
     const flow = getLuminescenceFlowSelection();
-    const lumTypeSelect = safeGetElement('luminescenceTypeSelect');
+    if (isSingleTmMode()) { applySingleTmUi(); return; }
+    if (leaveSingleTmUi()) { return window.updateLuminescenceFlowUi(); } const lumTypeSelect = safeGetElement('luminescenceTypeSelect');
     const upWrap = safeGetElement('upconversionMechanismWrap');
     const etucHint = safeGetElement('etucFlowHint');
     const fitBtn = safeGetElement('fitDataButton');
@@ -2947,7 +3172,7 @@ async function runAlternativeLuminescenceFlow(options = {}) {
         emission: selectedEmission,
         doping_yb: parseFloat(safeGetElement('dopingYbInput')?.value || '10'),
         doping_tm: parseFloat(safeGetElement('dopingTmInput')?.value || '0.5'),
-        time_unit: safeGetElement('timeUnit')?.value || 'ms',
+        time_unit: safeGetElement('timeUnit')?.value || 'ns',
         pulse_width_us: parseFloat(safeGetElement('pulseWidthUs')?.value || '400'),
         time_max_ms: parseFloat(safeGetElement('simTimeMax')?.value || '15'),
         num_points: parseInt(safeGetElement('simPoints')?.value || '500', 10),
@@ -3056,6 +3281,11 @@ window.applyPhysicsSettings = function() {
     const pulseWidth = safeGetElement('pulseWidthUs')?.value;
     if (!pulseWidth) missingFields.push('Pulse Width');
     
+    if (materialModel === 'single_doped_tm') {
+        const excSel = resolveSingleTmExcitation();
+        if (!excSel) missingFields.push('Supported excitation (260/356/466/690/785/1210 nm)');
+        else if (emission && !singleTmReachable(excSel, emission)) missingFields.push(`Emission ${emission} nm is not populated by ${excSel.key} nm`);
+    }
     if (missingFields.length > 0) {
         statusDiv.innerHTML = `<span style="color: #ff4444;">⚠️ Missing: ${missingFields.join(', ')}</span>`;
         return;
@@ -3109,8 +3339,7 @@ window.applyPhysicsSettings = function() {
     // Build configuration payload for backend
     const configPayload = {
         time_unit: timeUnit,
-        doping_yb: parseFloat(dopingYb),
-        doping_tm: parseFloat(dopingTm),
+        doping_yb: (materialModel === 'single_doped_tm') ? (parseFloat(dopingYb) || 0) : parseFloat(dopingYb),        doping_tm: parseFloat(dopingTm),
         anneal_temp: parseFloat(annealTemp),
         host: host,
         lattice_energy: latticeEnergy,
@@ -3199,7 +3428,7 @@ window.fitData = async function(options = {}) {
     }
 
     const flowSelection = getLuminescenceFlowSelection();
-    if (!internalRun && !flowSelection.isEtuc) {
+    if (!internalRun && !flowSelection.isEtuc && !isSingleTmMode()) {
         try {
             return await runAlternativeLuminescenceFlow(options);
         } catch (err) {
@@ -3259,7 +3488,8 @@ window.fitData = async function(options = {}) {
         // Always re-seed transfer state at the beginning of a multi-channel run.
         // This ensures the first 775 step performs calibration even after prior runs.
         window.fitTransferState = { seeded775: false };
-
+        window.fitTransferState = { seeded775: false };
+        window.singleTmCarry = null;
         try {
             const getTimingErrorRatios = (result) => {
                 const tm = result?.timing_metrics || {};
@@ -3321,6 +3551,14 @@ window.fitData = async function(options = {}) {
 
             const applyFixedDefaultsFromResult = (result) => {
                 if (!result || typeof result !== 'object') return;
+                if (result.single_tm_params_all) {
+                    window.singleTmCarry = { G: result.single_tm_params_all.G };
+                    Object.entries(result.single_tm_params_all).forEach(([k, v]) => {
+                        const el = document.getElementById('stp_' + k);
+                        if (el && Number.isFinite(v)) el.value = Number(v).toPrecision(5);
+                    });
+                    return;
+                }
                 const odeParams = result.ode_parameters || {};
                 const guideParams = result.guide_parameters || {};
                 Object.entries({ ...guideParams, ...odeParams }).forEach(([name, value]) => {
@@ -3799,7 +4037,7 @@ window.fitData = async function(options = {}) {
                     throw abortErr;
                 }
 
-                if (isFirst775 && finalResult && typeof finalResult.r2 === 'number' && finalResult.r2 < 0.8) {
+                if (!isSingleTmMode() && isFirst775 && finalResult && typeof finalResult.r2 === 'number' && finalResult.r2 < 0.8) {
                     throw new Error(
                         `775 nm calibration failed in multi-channel mode (R²=${finalResult.r2.toFixed(4)}). ` +
                         'Sequence stopped to avoid propagating poor transfer to later channels.'
@@ -3906,7 +4144,7 @@ window.fitData = async function(options = {}) {
         // `time` is still in the file's unit (ns/us/ms) here, but the time offset, rise window and
         // pulse width it is compared with are all in ms. Convert first.
         const TIME_UNIT_TO_MS = { ns: 1e-6, us: 1e-3, ms: 1.0 };
-        const timeToMs = TIME_UNIT_TO_MS[safeGetElement('timeUnit')?.value || 'ms'] ?? 1.0;
+        const timeToMs = TIME_UNIT_TO_MS[safeGetElement('timeUnit')?.value || 'ns'] ?? 1e-6;
         const timeMs = time.map(t => t * timeToMs);
         const earlyMetrics = estimateEarlyTimeMetrics(timeMs, intensity);
 
@@ -3963,7 +4201,7 @@ window.fitData = async function(options = {}) {
         window.fitTransferState = window.fitTransferState || { seeded775: false };
         const autoTransfer = safeGetElement('autoTransfer775')?.checked !== false;
         const transferEnabled = options.forceNoTransfer === true ? false : autoTransfer;
-        const use775Calibration = options.force775Calibration === true
+        const use775Calibration = isDownshiftFlow() ? false : options.force775Calibration === true
             ? true
             : (transferEnabled && selectedEmission === '775' && !window.fitTransferState.seeded775);
 
@@ -4000,6 +4238,7 @@ window.fitData = async function(options = {}) {
             mechanism_params: collectMechanismParams(),
             single_tm_params: collectSingleTmParams(),
             doping_yb: parseFloat(safeGetElement('dopingYbInput')?.value || '10'),
+            ...singleTmPayloadExtras(transferEnabled),
             doping_tm: parseFloat(safeGetElement('dopingTmInput')?.value || '0.5'),
             host: safeGetElement('hostSelect')?.value || 'NaYF4',
             anneal_temp: parseFloat(safeGetElement('annealSelect')?.value || '500'),
@@ -4007,6 +4246,8 @@ window.fitData = async function(options = {}) {
             use_775_calibration: use775Calibration,
             peak_window_boost: peakWindowBoost,
             early_rise_boost: earlyRiseBoost,
+            ...(options.fitSeedOverride != null ? { fit_seed: Number(options.fitSeedOverride) } : {}),
+            ...(options.fitPulseWidthOverride != null ? { fit_pulse_width: Boolean(options.fitPulseWidthOverride) } : {}),
             // Use per-emission tolerances: for the emission being fitted,
             // look up stored values; fall back to DOM inputs for single-channel.
             peak_tolerance: (emissionDefaults[selectedEmission]?.tolerances?.peak)
@@ -4015,7 +4256,7 @@ window.fitData = async function(options = {}) {
                 ?? (parseFloat(document.getElementById('errRise')?.value) || 0.10),
             decay_tolerance: (emissionDefaults[selectedEmission]?.tolerances?.decay)
                 ?? (parseFloat(document.getElementById('errDecay')?.value) || 0.10),
-            time_unit: safeGetElement('timeUnit')?.value || 'ms',
+            time_unit: safeGetElement('timeUnit')?.value || 'ns',
             pulse_width_us: parseFloat(safeGetElement('pulseWidthUs')?.value || '400'),
             time_offset_ms: selectedTimeOffsetMs,
             lit_params: {
@@ -4131,13 +4372,13 @@ window.fitData = async function(options = {}) {
         const odeUnits = fittingResults.ode_parameter_units || {};
         const guideParams = fittingResults.guide_parameters || {};
         const paramRoles = fittingResults.parameter_roles || {};
-        const timeUnit = tm.time_unit || (safeGetElement('timeUnit')?.value || 'ms');
+        const timeUnit = tm.time_unit || (safeGetElement('timeUnit')?.value || 'ns');
 
         if (selectedEmission === '775' && diagnostics.use_775_calibration) {
             window.fitTransferState.seeded775 = true;
         }
 
-        Object.entries({ ...guideParams, ...odeParams }).forEach(([name, value]) => {
+        Object.entries(isDownshiftFlow() ? {} : { ...guideParams, ...odeParams }).forEach(([name, value]) => {
             const input = safeGetElement(`lit_${name}`);
             if (!input) return;
             if (typeof value !== 'number' || !Number.isFinite(value)) return;
@@ -4327,6 +4568,7 @@ window.fitData = async function(options = {}) {
             <div class="result-item"><span class="result-label">All-Point Optimization:</span> <span class="result-value">${diagnostics.optimize_all_points ? 'Yes' : 'No'}</span></div>
             <div class="result-item"><span class="result-label">Optimization Points:</span> <span class="result-value">${diagnostics.n_points_opt || 'N/A'} / ${diagnostics.n_points_full || 'N/A'}</span></div>
             <div class="result-item"><span class="result-label">Fitted Pulse Width:</span> <span class="result-value">${fmtNum(diagnostics.fitted_pulse_width_us, 3)} us</span></div>
+            <div class="result-item"><span class="result-label">Pulse-Width Mode:</span> <span class="result-value">${typeof diagnostics.pulse_width_optimized === 'boolean' ? (diagnostics.pulse_width_optimized ? 'Optimized' : 'Fixed at input') : 'N/A'}</span></div>
             <div class="result-item"><span class="result-label">Optimized Variables:</span> <span class="result-value">${diagnostics.n_optimized_variables || 'N/A'}</span></div>
             <div class="result-item"><span class="result-label">Fixed Parameters:</span> <span class="result-value">${diagnostics.n_fixed_params || 'N/A'}</span></div>
 
@@ -4668,7 +4910,7 @@ function buildRichCsvHeader(fileBaseName, ps, diagnostics, odeParams, odeUnits, 
 
     // Timing metrics
     lines.push(sep);
-    lines.push(`# TIMING METRICS  (time unit: ${ps?.time_unit || 'ms'})`);
+    lines.push(`# TIMING METRICS  (time unit: ${ps?.time_unit || 'ns'})`);
     lines.push(`#   Rise 10-90% Measured : ${fmtN(meas.rise_time_10_90, 5)}`);
     lines.push(`#   Rise 10-90% Fitted   : ${fmtN(fit.rise_time_10_90, 5)}`);
     lines.push(`#   Decay τ(1/e) Measured: ${fmtN(meas.decay_tau_1e, 5)}`);
@@ -5036,6 +5278,8 @@ window.resetControls = function() {
 
     setVal('dopingYbInput', '10');
     setVal('dopingTmInput', '0.5');
+    setVal('timeUnit', 'ns');
+    setVal('pulseWidthUs', '400');
     setVal('smoothingWindow', '5');
     setTxt('smoothingWindowValue', '5');
     setVal('fitModeSelect', 'fast');
@@ -5061,6 +5305,7 @@ window.resetControls = function() {
     rawData = uploadMode === 'single' ? singleRawData : null;
     if (rawData) plotRawData();
     window.fitTransferState = { seeded775: false };
+    window.singleTmCarry = null;
     setFitResultsHtml('<p style="color: #999; text-align: center;">Load data and click "FIT MY DATA" to see results</p>');
     const legacyDownloadBtn = document.getElementById('downloadBtn');
     if (legacyDownloadBtn) legacyDownloadBtn.style.display = 'none';
@@ -5237,7 +5482,7 @@ window.runForwardSim = function() {
     const annealingC = parseFloat(safeGetElement('simAnneal')?.value || '500');
     const phononEnergy = parseFloat(safeGetElement('simPhononEnergy')?.value || '350');
     const hostMoleFactor = parseFloat(safeGetElement('simHostMoleFactor')?.value || '5');
-    const pulse   = parseFloat(safeGetElement('simPulse')?.value || '100');
+    const pulse   = parseFloat(safeGetElement('simPulse')?.value || '400');
     const tmax    = parseFloat(safeGetElement('simTimeMax')?.value || '15');
     const pts     = parseInt(safeGetElement('simPoints')?.value || '500', 10);
     const ybList = parseCommaNumberList(safeGetElement('simYbList')?.value || '');
@@ -5446,7 +5691,7 @@ window.runCompositionEstimate = function() {
         channels,
         yb_range: [parseFloat(safeGetElement('estYbMin')?.value || '1'), parseFloat(safeGetElement('estYbMax')?.value || '30')],
         tm_range: [parseFloat(safeGetElement('estTmMin')?.value || '0.01'), parseFloat(safeGetElement('estTmMax')?.value || '5')],
-        pulse_us: parseFloat(safeGetElement('estPulse')?.value || '100'),
+        pulse_us: parseFloat(safeGetElement('estPulse')?.value || '400'),
         host_material: hostMaterial,
         annealing_c: annealingC,
         phonon_energy_cm: phononEnergy,
@@ -5589,4 +5834,490 @@ window.addEventListener('load', function() {
     
     // Update excitation energy on load
     updateExcitationEnergy();
+    ['dopingTmInput', 'dopingYbInput'].forEach(id =>
+        document.getElementById(id)?.addEventListener('input', () => { if (isSingleTmMode()) updateSingleTmContext(); }));
 });
+
+// ===== Downshifting batch queue (merged from downshift_batch.js) =====
+// Downshifting batch queue (single-doped Tm and co-doped Yb/Tm).
+// Each uploaded file carries its own Data File inputs (time unit, emission, excitation, pulse width)
+// and Sample Composition (Yb, Tm, host, annealing). Files are fitted one after another through the
+// existing fitData() pipeline. Nothing here is active for the upconversion / downconversion flows.
+(function () {
+  'use strict';
+
+  const EXC_CHOICES = [260, 356, 466, 690, 785, 1210];
+  const EXC_TOL_NM = 10;
+  const HOSTS = [['NaYF4', 'β-NaYF₄'], ['YF3', 'YF₃'], ['GdF3', 'GdF₃'], ['Y2O3', 'Y₂O₃'], ['YLF', 'YLF'], ['YAG', 'YAG']];
+  const EM_LABEL = {
+    '346': '346 nm (¹I₆→³F₄)', '362': '362 nm (¹D₂→³H₆)', '454': '454 nm (¹D₂→³F₄)',
+    '477': '477 nm (¹G₄→³H₆)', '645': '645 nm (¹G₄→³F₄)', '775': '775 nm (³H₄→³H₆)', '1800': '1800 nm (³F₄→³H₆)',
+  };
+  const HIDDEN_FIELD_IDS = ['timeUnit', 'emissionSelect', 'excitationWavelength', 'pulseWidthUs'];
+
+  let rows = [];
+  let nextId = 1;
+  let running = false;
+  let cancelled = false;
+  let active = false;
+
+  const $ = (id) => document.getElementById(id);
+  const isCoDoped = () => !isSingleTmMode();
+
+  // ---------- helpers ----------
+  function snapExcitation(nm) {
+    nm = parseFloat(nm);
+    if (!Number.isFinite(nm)) return null;
+    let best = null;
+    EXC_CHOICES.forEach(k => { if (Math.abs(k - nm) <= EXC_TOL_NM && (best === null || Math.abs(k - nm) < Math.abs(best - nm))) best = k; });
+    return best;
+  }
+
+  function rowExcitation(r) {
+    const raw = r.excSel === 'other' ? r.excOther : r.excSel;
+    const key = snapExcitation(raw);
+    return { raw: parseFloat(raw), key };
+  }
+
+  function emissionChoices(excKey) {
+    if (!excKey) return [];
+    if (SINGLE_TM_ALLOWED_EMISSIONS[excKey]) return SINGLE_TM_ALLOWED_EMISSIONS[excKey].slice();
+    const exc = { key: excKey, ...SINGLE_TM_EXCITATIONS[excKey] };
+    return ['346', '362', '454', '477', '645', '775', '1800'].filter(em => singleTmReachable(exc, em));
+  }
+
+  function guessFromName(name) {
+    const out = {};
+    let m = name.match(/Ex[_ ]?(\d{3,4})/i); if (m) out.exc = m[1];
+    m = name.match(/Em[_ ]?(\d{3,4})/i); if (m) out.em = m[1];
+    m = name.match(/Tm(\d+)(?:[_.](\d+))?/i); if (m) out.tm = m[2] ? `${m[1]}.${m[2]}` : m[1];
+    m = name.match(/Yb(\d+)(?:[_.](\d+))?/i); if (m) out.yb = m[2] ? `${m[1]}.${m[2]}` : m[1];
+    else if ((m = name.match(/(\d+(?:[_.]\d+)?)\s*Yb/i))) out.yb = m[1].replace('_', '.');
+    m = name.match(/(\d{3,4})\s*C(?![a-z])/i); if (m) out.anneal = m[1];
+    m = name.match(/NaYF4|YF3|GdF3|Y2O3|YLF|YAG/i);
+    if (m) out.host = HOSTS.map(h => h[0]).find(h => h.toLowerCase() === m[0].toLowerCase());
+    return out;
+  }
+
+  function newRow(file, data) {
+    const g = guessFromName(file.name);
+    const snapped = g.exc ? snapExcitation(g.exc) : null;
+    const r = {
+      id: nextId++, name: file.name, data,
+      timeUnit: 'ns', pulse: '400', pulseAuto: true, fitPulseWidth: false, tm: g.tm || '', yb: g.yb || '', host: g.host || '', anneal: g.anneal || '',
+      excSel: snapped ? String(snapped) : (g.exc ? 'other' : ''), excOther: snapped ? '' : (g.exc || ''),
+      emission: '', status: 'Ready', r2: null,
+    };
+    const choices = emissionChoices(rowExcitation(r).key);
+    if (g.em && choices.includes(g.em)) r.emission = g.em;
+    else if (choices.length === 1) r.emission = choices[0];
+    return r;
+  }
+
+  function validate(r) {
+    const errs = [];
+    const { raw, key } = rowExcitation(r);
+    if (!r.timeUnit) errs.push('time unit');
+    if (!key) errs.push(Number.isFinite(raw) ? `excitation ${raw} nm is not within ±${EXC_TOL_NM} nm of ${EXC_CHOICES.join('/')} nm` : 'excitation');
+    if (!r.emission || (key && !emissionChoices(key).includes(r.emission))) errs.push('emission');
+    if (!(parseFloat(r.pulse) > 0)) errs.push('pulse width');
+    if (!(parseFloat(r.tm) > 0)) errs.push('Tm %');
+    if (isCoDoped() && !(parseFloat(r.yb) >= 0 && r.yb !== '')) errs.push('Yb %');
+    if (!r.host) errs.push('host');
+    if (!(parseFloat(r.anneal) >= 0 && r.anneal !== '')) errs.push('annealing');
+    return errs;
+  }
+
+  // ---------- UI ----------
+  function hideEl(el) {
+    if (!el) return;
+    if (el.dataset.dsPrev === undefined) el.dataset.dsPrev = el.style.display || '';
+    el.style.display = 'none';
+  }
+  function restoreEl(el) {
+    if (!el || el.dataset.dsPrev === undefined) return;
+    el.style.display = el.dataset.dsPrev;
+    delete el.dataset.dsPrev;
+  }
+
+  // The Tm ODE / starting-rate panel lives in Advanced Settings while Downshifting is active.
+  let tmPanelHome = null;
+  function moveTmPanel(toAdvanced) {
+    const panel = $('singleDopedTmPanel'), adv = $('ribbonContentAdvanced');
+    if (!panel || !adv) return;
+    if (toAdvanced) {
+      if (!tmPanelHome) tmPanelHome = { parent: panel.parentElement, next: panel.nextSibling };
+      if (panel.parentElement !== adv) adv.appendChild(panel);
+    } else if (tmPanelHome && panel.parentElement === adv) {
+      tmPanelHome.parent.insertBefore(panel, tmPanelHome.next && tmPanelHome.next.parentElement === tmPanelHome.parent ? tmPanelHome.next : null);
+    }
+  }
+
+  function setBatchLayout(on) {
+    const owned = [
+      $('uploadModeSingle')?.closest('div'), $('singleUploadControls'), $('multiUploadControls'),
+      ...HIDDEN_FIELD_IDS.map(id => $(id)?.parentElement),
+      $('applySettingsBtn'), $('fitDataButton'),
+    ];
+    owned.forEach(on ? hideEl : restoreEl);
+    // Tab visibility is otherwise managed by updateLuminescenceFlowUi, which runs before this.
+    if (!on) restoreEl($('ribbonTabSample'));
+    if (on) {
+      hideEl($('ribbonTabSample'));
+      ['ribbonTabPhysics', 'ribbonTabRunsettings'].forEach(id => { const el = $(id); if (el) el.style.display = 'none'; });
+      const adv = $('ribbonTabAdvanced'); if (adv) adv.style.display = '';
+      const mech = $('ribbonTabMechanism'); if (mech) mech.style.display = 'none';
+      moveTmPanel(true);
+      const cur = Array.from(document.querySelectorAll('.ribbon-content')).find(e => e.style.display === 'block');
+      if (cur && ['ribbonContentSample', 'ribbonContentPhysics', 'ribbonContentRunsettings'].includes(cur.id)) showRibbonTab('upload');
+      else if (cur && cur.id === 'ribbonContentMechanism') showRibbonTab('advanced');
+      const hint = $('etucFlowHint');
+      if (hint) {
+        hint.style.display = 'block';
+        hint.style.borderLeftColor = '#10b981'; hint.style.background = '#ecfdf5'; hint.style.color = '#065f46';
+        hint.textContent = (isCoDoped() ? 'Co-doped Yb/Tm downshifting' : 'Single-doped Tm downshifting')
+          + ': Tm ODE fit. Upload any number of files; each file has its own data-file inputs and sample composition.';
+      }
+    }
+    if (!on) moveTmPanel(false);
+    const panel = $('dsBatchPanel');
+    if (panel) panel.style.display = on ? 'block' : 'none';
+    const runBtn = $('dsBatchRun');
+    if (runBtn) runBtn.style.display = on ? '' : 'none';
+    const cfgBtn = $('dsBatchConfig');
+    if (cfgBtn) cfgBtn.style.display = on ? '' : 'none';
+  }
+
+  function applyMode() {
+    const want = isDownshiftFlow();
+    if (!want && !active) return;
+    if (want && typeof getActiveUploadMode === 'function' && getActiveUploadMode() === 'multi') window.switchUploadMode('single');
+    setBatchLayout(want);
+    active = want;
+    if (want) render();
+  }
+
+  function opt(v, label, sel) { return `<option value="${v}"${String(sel) === String(v) ? ' selected' : ''}>${label}</option>`; }
+
+  function render() {
+    const host = $('dsBatchRows');
+    if (!host) return;
+    const co = isCoDoped();
+    const inp = 'padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box;min-width:70px;';
+    const head = ['File', 'Time unit', 'Excitation (nm)', 'Emission', 'Pulse (µs)', 'Optimize pulse width'].concat(co ? ['Yb %'] : [], ['Tm %', 'Host', 'Anneal (°C)', 'Status']);
+    let html = '<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:12px;width:100%;min-width:1150px;"><thead><tr>'
+      + head.map(h => `<th style="text-align:left;padding:4px 6px;border-bottom:2px solid #cbd5e1;color:#374151;white-space:nowrap;">${h}</th>`).join('')
+      + '<th></th></tr></thead><tbody>';
+    rows.forEach(r => {
+      const { raw, key } = rowExcitation(r);
+      const ems = emissionChoices(key);
+      const errs = validate(r);
+      const snapNote = key && Number.isFinite(raw) && raw !== key ? `<div style="font-size:9px;color:#b45309;">→ using ${key} nm</div>` : '';
+      const statusColor = r.status.startsWith('✓') ? '#15803d' : (r.status.startsWith('✗') ? '#b91c1c' : '#475569');
+      html += `<tr data-id="${r.id}" style="border-bottom:1px solid #e5e7eb;vertical-align:top;">
+        <td style="padding:4px 6px;min-width:160px;max-width:220px;word-break:break-all;font-size:11px;">${r.name}</td>
+        <td style="padding:4px 6px;"><select data-f="timeUnit" style="${inp}min-width:80px;">${opt('', 'select', r.timeUnit)}${opt('ns', 'ns', r.timeUnit)}${opt('us', 'μs', r.timeUnit)}${opt('ms', 'ms', r.timeUnit)}</select></td>
+        <td style="padding:4px 6px;white-space:nowrap;">
+          <select data-f="excSel" style="${inp}min-width:90px;">${opt('', 'select', r.excSel)}${EXC_CHOICES.map(e => opt(e, e, r.excSel)).join('')}${opt('other', 'Other…', r.excSel)}</select>
+          ${r.excSel === 'other' ? `<input data-f="excOther" type="number" step="any" value="${r.excOther}" placeholder="nm" style="${inp}width:90px;">` : ''}${snapNote}</td>
+        <td style="padding:4px 6px;"><select data-f="emission" style="${inp}min-width:170px;">${opt('', ems.length ? 'select' : 'pick excitation', r.emission)}${ems.map(e => opt(e, EM_LABEL[e] || e + ' nm', r.emission)).join('')}</select></td>
+        <td style="padding:4px 6px;"><input data-f="pulse" type="number" min="0" step="any" value="${r.pulse}" placeholder="400" style="${inp}width:90px;"></td>
+        <td style="padding:4px 6px;text-align:center;"><input data-f="fitPulseWidth" type="checkbox" ${r.fitPulseWidth ? 'checked' : ''} title="Check to let the fitter adjust this pulse width"></td>
+        ${co ? `<td style="padding:4px 6px;"><input data-f="yb" type="number" min="0" step="any" value="${r.yb}" placeholder="10" style="${inp}width:80px;"></td>` : ''}
+        <td style="padding:4px 6px;"><input data-f="tm" type="number" min="0" step="any" value="${r.tm}" placeholder="0.5" style="${inp}width:80px;"></td>
+        <td style="padding:4px 6px;"><select data-f="host" style="${inp}min-width:100px;">${opt('', 'select', r.host)}${HOSTS.map(h => opt(h[0], h[1], r.host)).join('')}</select></td>
+        <td style="padding:4px 6px;"><input data-f="anneal" type="number" min="0" step="any" value="${r.anneal}" placeholder="500" style="${inp}width:90px;"></td>
+        <td style="padding:4px 6px;color:${statusColor};font-size:10px;">${r.status}${r.r2 != null ? ` (R²=${r.r2.toFixed(5)})` : ''}${errs.length && r.status === 'Ready' ? `<div style="color:#b45309;">needs: ${errs.join(', ')}</div>` : ''}</td>
+        <td style="padding:4px 6px;white-space:nowrap;"><button type="button" data-act="preview" style="font-size:10px;">👁</button> <button type="button" data-act="remove" title="Delete this file" style="font-size:10px;color:#b91c1c;">🗑 Delete</button></td></tr>`;
+    });
+    html += '</tbody></table></div>';
+    host.innerHTML = rows.length ? html : '<div style="font-size:11px;color:#6b7280;">No files yet. Click “Add files”.</div>';
+    const count = $('dsBatchCount'); if (count) count.textContent = `${rows.length} file(s)`;
+    const yb = $('dsBatchModeLabel'); if (yb) yb.textContent = co ? 'Co-doped Yb/Tm' : 'Single-doped Tm';
+    syncOdeView();
+  }
+
+  // The Mechanism tab reads #excitationWavelength; in batch mode that field is hidden, so mirror the active row.
+  function syncOdeView() {
+    if (running || !rows.length) return;
+    const r = rows.find(x => x.id === activeId) || rows[0];
+    const { key } = rowExcitation(r);
+    const el = $('excitationWavelength');
+    if (!el || !key) return;
+    el.value = String(key);
+    window.singleTmActiveEmission = r.emission || '';
+    if (r.emission) {
+      const sel = $('emissionSelect');
+      if (sel) {
+        if (!Array.from(sel.options).some(o => o.value === r.emission)) {
+          const o = document.createElement('option'); o.value = r.emission; o.textContent = EM_LABEL[r.emission] || r.emission; o.dataset.ds = '1';
+          sel.appendChild(o);
+        }
+        sel.value = r.emission;
+      }
+    }
+    if (typeof updateExcitationEnergy === 'function') updateExcitationEnergy();
+    if (typeof updateSingleTmOdeDisplay === 'function') updateSingleTmOdeDisplay();
+    if (typeof updateActivePhysics === 'function') updateActivePhysics();
+  }
+
+  let activeId = null;
+
+  function onRowChange(e) {
+    const el = e.target; const tr = el.closest('tr[data-id]');
+    if (!tr || !el.dataset.f) return;
+    const r = rows.find(x => x.id === Number(tr.dataset.id)); if (!r) return;
+    r[el.dataset.f] = el.type === 'checkbox' ? el.checked : el.value;
+    if (el.dataset.f === 'pulse') r.pulseAuto = false;
+    activeId = r.id;
+    if (el.dataset.f === 'excSel' || el.dataset.f === 'excOther') {
+      const ems = emissionChoices(rowExcitation(r).key);
+      if (!ems.includes(r.emission)) r.emission = ems.length === 1 ? ems[0] : '';
+    }
+    r.status = 'Ready'; r.r2 = null;
+    setTimeout(render, 0);
+  }
+
+  function onRowClick(e) {
+    const btn = e.target.closest('button[data-act]'); if (!btn) return;
+    const r = rows.find(x => x.id === Number(btn.closest('tr').dataset.id)); if (!r) return;
+    if (btn.dataset.act === 'remove') { if (!running) { rows = rows.filter(x => x !== r); render(); } return; }
+    activeId = r.id; syncOdeView();
+    rawData = r.data;
+    safeSetText('analyzerCurrentFile', r.name);
+    safeSetText('analyzerFileInfo', `${r.data.time.length} data points`);
+    plotRawData();
+  }
+
+  function readFile(file) {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => {
+        try { resolve(/\.json$/i.test(file.name) ? parseJSONContent(fr.result) : parseCSVContent(fr.result)); }
+        catch (err) { reject(err); }
+      };
+      fr.onerror = () => reject(new Error('read error'));
+      fr.readAsText(file);
+    });
+  }
+
+  async function addFiles(fileList) {
+    for (const f of Array.from(fileList)) {
+      try {
+        const data = await readFile(f);
+        if (!data || !data.time || !data.time.length) throw new Error('no data');
+        const nr = newRow(f, data);
+        rows.push(nr);
+        if (!rows.some(x => x.id === activeId)) { activeId = nr.id; setActiveDatasetView(data, f.name, ''); }
+      } catch (err) {
+        showStatus('error', `✗ ${f.name}: ${err.message}`);
+      }
+    }
+    render();
+  }
+
+  // ---------- run ----------
+  function writeInputsToDom(r, excKey) {
+    const set = (id, v) => { const el = $(id); if (el) el.value = v; };
+    set('timeUnit', r.timeUnit);
+    set('pulseWidthUs', r.pulse);
+    set('dopingTmInput', r.tm);
+    set('dopingYbInput', isCoDoped() ? r.yb : '0');
+    set('hostSelect', r.host);
+    set('annealSelect', r.anneal);
+    set('excitationWavelength', String(excKey));
+    const sel = $('emissionSelect');
+    if (sel) {
+      if (!Array.from(sel.options).some(o => o.value === r.emission)) {
+        const o = document.createElement('option'); o.value = r.emission; o.textContent = EM_LABEL[r.emission] || r.emission; o.dataset.ds = '1';
+        sel.appendChild(o);
+      }
+      sel.value = r.emission;
+    }
+    if (typeof updateExcitationEnergy === 'function') updateExcitationEnergy();
+    if (typeof updateSingleTmOdeDisplay === 'function') updateSingleTmOdeDisplay();
+    if (typeof updateActivePhysics === 'function') updateActivePhysics();
+  }
+
+  // Run quality = R² minus a penalty for peak/rise-window error, so a run with a better rise can beat a slightly higher R².
+  const RISE_PENALTY_WEIGHT = 0.5;
+  function runScore(r2, diagnostics) {
+    if (!Number.isFinite(r2)) return -Infinity;
+    const ta = diagnostics?.tolerance_achieved || {};
+    const pen = (Number.isFinite(ta.peak) ? Math.min(1, Math.abs(ta.peak)) : 0) + (Number.isFinite(ta.rise) ? Math.min(1, Math.abs(ta.rise)) : 0);
+    return r2 - RISE_PENALTY_WEIGHT * pen;
+  }
+
+  // Excitation pulse ≈ onset→peak time of the measured trace (the fitter keeps the pulse fixed, so a wrong default
+  // such as 400 µs blunts the rise). Only used while the user has not typed a pulse width for the row.
+  function estimatePulseUs(r) {
+    const t = r.data?.time, y = r.data?.intensity;
+    const f = { ns: 1e-6, us: 1e-3, ms: 1.0 }[r.timeUnit];
+    if (!f || !Array.isArray(t) || !Array.isArray(y) || t.length < 8 || y.length !== t.length) return null;
+    let pk = 0;
+    for (let i = 1; i < y.length; i++) if (y[i] > y[pk]) pk = i;
+    if (!(y[pk] > 0)) return null;
+    let on = y.findIndex(v => Number.isFinite(v) && v >= 0.03 * y[pk]);
+    if (on < 0 || on > pk) on = 0;
+    const us = (t[pk] - t[on]) * f * 1000;
+    return Number.isFinite(us) && us > 0 ? Math.max(20, Math.round(us)) : null;
+  }
+
+  async function runAll() {
+    if (running) return;
+    if (!rows.length) { showStatus('error', '✗ Add at least one file'); return; }
+    const bad = rows.map(r => ({ r, e: validate(r) })).filter(x => x.e.length);
+    if (bad.length) {
+      bad.forEach(x => { x.r.status = '✗ missing: ' + x.e.join(', '); });
+      render();
+      showStatus('error', `✗ ${bad.length} file(s) have missing or unsupported inputs`);
+      return;
+    }
+    running = true; cancelled = false;
+    const runButton = $('dsBatchRun');
+    runButton.disabled = true;
+    runButton.classList.add('is-running');
+    setFitUiBusy(true);
+    const loader = $('loadingIndicator'); if (loader) loader.style.display = 'block';
+    resetFitLiveLog();
+    appendFitLiveLog(`Downshifting batch started: ${rows.length} file(s).`);
+    try {
+      for (let i = 0; i < rows.length; i++) {
+        if (cancelled) break;
+        const r = rows[i];
+        const { key } = rowExcitation(r);
+        if (r.pulseAuto) { const pu = estimatePulseUs(r); if (pu) { r.pulse = String(pu); appendFitLiveLog('Pulse width set from measured onset→peak: ' + pu + ' µs.'); } }
+        r.status = 'running…'; r.r2 = null; render();
+        writeInputsToDom(r, key);
+        activeId = r.id;
+        setActiveDatasetView(r.data, r.name, r.emission);
+        window.singleTmCarry = null;
+        appendFitLiveLog(`File ${i + 1}/${rows.length}: ${r.name} | exc ${key} nm | em ${r.emission} nm.`);
+        try {
+          const baseOpts = { internalRun: true, sourceData: r.data, emission: r.emission, fileName: r.name,
+            forceNoTransfer: true, manageUiBusy: false, showLoading: false, resetLiveLog: false,
+            fitPulseWidthOverride: r.fitPulseWidth };
+          const depStart = plotDeposits.length;
+          let res = await window.fitData(baseOpts);
+          // Auto-retry (same idea as the ETUC multi-channel sequence, without the countdown): re-fit with
+          // jittered peak/early weights and more adaptive cycles, keep the best, stop when solved or stalled.
+          const SOLVED_R2 = Math.min(0.998, parseFloat($('targetR2Input')?.value) || 0.998);
+          const userMax = parseInt($('maxRetriesInput')?.value, 10);
+          const maxRetries = Math.max(1, Math.min(25, Number.isFinite(userMax) ? userMax : 12));
+          if (res && typeof res.r2 === 'number' && res.r2 < SOLVED_R2 && !cancelled) {
+            let best = res, bestOpts = {}, lastRun = res, stall = 0;
+            appendFitLiveLog(`Auto-retry triggered (R²=${res.r2.toFixed(5)} < ${SOLVED_R2}).`);
+            for (let a = 1; a <= maxRetries && !cancelled; a++) {
+              const bw = { peak: best?.diagnostics?.peak_window_boost || 1.0, early: best?.diagnostics?.early_rise_boost || 1.0 };
+              const jit = (v) => Math.min(10, Math.max(1, v * (1 + (Math.random() * 2 - 1) * (0.1 + 0.03 * stall))));
+              const opts = { fitModeOverride: 'long', skipQualitySweep: true,
+                targetR2Override: SOLVED_R2, adaptiveMaxCyclesOverride: Math.min(50, 8 + a),
+                peakWindowBoostOverride: jit(Math.max(1.27, bw.peak)), earlyRiseBoostOverride: jit(Math.max(1.3, bw.early)),
+                fitSeedOverride: 42 + 101 * a };
+              r.status = `retry ${a}/${maxRetries}…`; render();
+              appendFitLiveLog(`─── Retry ${a}/${maxRetries} for ${r.name} (peak w=${opts.peakWindowBoostOverride.toFixed(2)}, early w=${opts.earlyRiseBoostOverride.toFixed(2)}) ───`);
+              const rr = await window.fitData({ ...baseOpts, ...opts });
+              if (!rr || !Number.isFinite(rr.r2)) { stall++; if (stall >= 3) break; continue; }
+              lastRun = rr;
+              if (runScore(rr.r2, rr.diagnostics) > runScore(best.r2, best.diagnostics) + 1e-4) { best = rr; bestOpts = opts; stall = 0; appendFitLiveLog(`Retry ${a}: improved to R²=${rr.r2.toFixed(5)} (score ${runScore(rr.r2, rr.diagnostics).toFixed(5)}).`); }
+              else { stall++; appendFitLiveLog(`Retry ${a}: R²=${rr.r2.toFixed(5)} (no improvement, best ${best.r2.toFixed(5)}).`); }
+              if (best.r2 >= SOLVED_R2) { appendFitLiveLog('Solved criteria reached; stopping retries.'); break; }
+              if (stall >= 3) { appendFitLiveLog('No improvement for 3 retries; stopping.'); break; }
+            }
+            // The plot shows the last run; re-run the best settings if the last run was not the best.
+            if (best !== lastRun && !cancelled) {
+              try {
+                const displayRun = await window.fitData({ ...baseOpts, ...bestOpts });
+                if (displayRun && Number.isFinite(displayRun.r2) && runScore(displayRun.r2, displayRun.diagnostics) >= runScore(best.r2, best.diagnostics) - 1e-9) {
+                  best = displayRun;
+                } else {
+                  appendFitLiveLog(`Best-fit display rerun did not match the retained best R²=${best.r2.toFixed(6)}; keeping the original best fit.`);
+                }
+              } catch (err) {
+                appendFitLiveLog(`Best-fit display rerun failed (${err?.message || 'unknown error'}); keeping the original best fit.`);
+              }
+            }
+            res = best;
+          }
+
+          // Highlight the best run for this file (green border, like ETUC); ties go to the latest run.
+          try {
+            let bi = -1, bs = -Infinity;
+            for (let di = depStart; di < plotDeposits.length; di++) {
+              const dep = plotDeposits[di];
+              dep.isBestFit = false;
+              const s = runScore(dep.r2, dep.diagnostics);
+              if (s >= bs) { bs = s; bi = di; }
+            }
+            if (bi >= 0) {
+              const dep = plotDeposits[bi];
+              dep.isBestFit = true;
+              const badge = '<div style="margin:8px 0; padding:8px 12px; background:#dcfce7; border:2px solid #16a34a; border-radius:6px; text-align:center; font-size:14px; font-weight:800; color:#166534;">★ BEST FIT ★</div>';
+              if (dep.resultsHtml && !dep.resultsHtml.includes('BEST FIT')) dep.resultsHtml = badge + dep.resultsHtml;
+              savePlotDeposits();
+              activeDepositIndex = bi;
+              appendFitLiveLog(`Best fit for ${r.name}: deposit #${bi + 1} (R²=${plotDeposits[bi].r2.toFixed(6)}, peak err=${(plotDeposits[bi].diagnostics?.tolerance_achieved?.peak ?? NaN).toFixed(3)}, rise err=${(plotDeposits[bi].diagnostics?.tolerance_achieved?.rise ?? NaN).toFixed(3)}).`);
+              renderDepositList();
+              window.openDepositedPlot(bi);
+            } else appendFitLiveLog(`Best-fit marking: no deposits found for ${r.name}.`);
+          } catch (e) { console.warn('best-fit marking failed', e); appendFitLiveLog(`Best-fit marking failed: ${e?.message || e}`); }
+          if (res && typeof res.r2 === 'number') { r.r2 = res.r2; r.status = '✓ done'; }
+          else r.status = cancelled ? 'cancelled' : '✗ failed';
+        } catch (err) {
+          if (err && err.name === 'AbortError') { r.status = 'cancelled'; cancelled = true; }
+          else r.status = '✗ ' + (err?.message || 'failed');
+        }
+        render();
+      }
+    } finally {
+      running = false;
+      const loaderEnd = $('loadingIndicator'); if (loaderEnd) loaderEnd.style.display = 'none';
+      runButton.disabled = false;
+      runButton.classList.remove('is-running');
+      setFitUiBusy(false);
+      appendFitLiveLog(cancelled ? 'Downshifting batch cancelled.' : 'Downshifting batch finished.');
+    }
+  }
+
+  // ---------- wiring ----------
+  function flashBatchButton(button) {
+    button.classList.remove('is-clicked');
+    void button.offsetWidth;
+    button.classList.add('is-clicked');
+    button.addEventListener('animationend', () => button.classList.remove('is-clicked'), { once: true });
+  }
+
+  function init() {
+    const fileInput = $('dsBatchFileInput');
+    $('dsBatchAdd')?.addEventListener('click', () => fileInput?.click());
+    fileInput?.addEventListener('change', async (e) => { await addFiles(e.target.files); fileInput.value = ''; });
+    $('dsBatchRun')?.addEventListener('click', () => {
+      flashBatchButton($('dsBatchRun'));
+      runAll();
+    });
+    $('dsBatchConfig')?.addEventListener('click', () => {
+      flashBatchButton($('dsBatchConfig'));
+      showRibbonTab('advanced');
+    });
+    const host = $('dsBatchRows');
+    host?.addEventListener('change', onRowChange);
+    host?.addEventListener('click', onRowClick);
+
+    const origCancel = window.cancelFitting;
+    window.cancelFitting = async function () {
+      if (running) cancelled = true;
+      return origCancel.apply(this, arguments);
+    };
+
+    const origFlow = window.updateLuminescenceFlowUi;
+    window.updateLuminescenceFlowUi = function () {
+      const out = origFlow.apply(this, arguments);
+      applyMode();
+      return out;
+    };
+    applyMode();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
