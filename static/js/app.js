@@ -90,18 +90,18 @@ window.addEventListener("DOMContentLoaded", () => {
 });
 // --- 2b. Multi-Channel Slot & Order Configuration ---
 const MULTI_CHANNEL_SLOTS = [
-    { id: 'slot775', defaultEmission: '775', role: 'mandatory' },
-    { id: 'slot477', defaultEmission: '477', role: 'mandatory' },
+    { id: 'slot775', defaultEmission: '775', role: 'optional' },
+    { id: 'slot477', defaultEmission: '477', role: 'optional' },
     { id: 'slot645', defaultEmission: '645', role: 'optional' },
-    { id: 'slot362', defaultEmission: '362', role: 'mandatory' },
+    { id: 'slot362', defaultEmission: '362', role: 'optional' },
     { id: 'slot452', defaultEmission: '452', role: 'optional' },
-    { id: 'slot345', defaultEmission: '345', role: 'mandatory' },
+    { id: 'slot345', defaultEmission: '345', role: 'optional' },
     { id: 'slot1800', defaultEmission: '1800', role: 'optional' },
     { id: 'slot1230', defaultEmission: '1230', role: 'optional' },
 ];
 
 const MULTI_CHANNEL_ORDER = ['775', '477', '645', '362', '452', '345'];
-const MULTI_CHANNEL_MANDATORY = new Set(['775', '477', '362', '345']);
+const MULTI_CHANNEL_MANDATORY = new Set([]);
 const MULTI_CHANNEL_MIN_R2 = {
     '775': 0.99,
     '477': 0.99,
@@ -366,14 +366,14 @@ const odeDatabase = {
         depopulation: ["A₂₀ · [N₂] (Radiative)", "W_nr · [N₂] (Non-radiative)"]
     },
     "775": {
-        latex: "\\frac{dTm_5}{dt} = W_2 \\cdot Yb_e \\cdot Tm_1 - A_{50} \\cdot Tm_5 - W_{cr} \\cdot Tm_5 \\cdot Tm_0 - W_3 \\cdot Yb_e \\cdot Tm_5 - W_b \\cdot Tm_5 \\cdot Yb_g",
-        population: ["W₂ · Ybₑ · Tm₁ (second ET feeding Tm₅)"],
-        depopulation: ["A₅₀ · Tm₅ (radiative 775 nm)", "Wcr · Tm₅ · Tm₀ (cross-relaxation)", "W₃ · Ybₑ · Tm₅ (ET → ¹G₄)", "Wb · Tm₅ · Ybg (back transfer ³H₄→Yb)"]
+        latex: "\\frac{dTm_5}{dt} = W_2 \\cdot Yb_e \\cdot Tm_1 + W_{cr,G4} \\cdot Tm_6 \\cdot Tm_0 - A_{50} \\cdot Tm_5 - W_3 \\cdot Yb_e \\cdot Tm_5 - W_{cr,H4} \\cdot Tm_5 \\cdot Tm_0 - W_b \\cdot Tm_5 \\cdot Yb_g",
+        population: ["W₂ · Ybₑ · Tm₁ (second ET feeding Tm₅)", "WcrG4 · Tm₆ · Tm₀ (¹G₄ CR feeds ³H₄)"],
+        depopulation: ["A₅₀ · Tm₅ (radiative 775 nm)", "W₃ · Ybₑ · Tm₅ (ET → ¹G₄)", "Wcr,H4 · Tm₅ · Tm₀ (³H₄ CR, for Tm ≥ 1.0 mol%)", "Wb · Tm₅ · Ybg (back transfer, only for Yb > 10 mol%)"]
     },
     "477": {
-        latex: "\\frac{dTm_6}{dt} = W_3 \\cdot Yb_e \\cdot Tm_5 - (A_{60} + A_{61}) \\cdot Tm_6 - W_4 \\cdot Yb_e \\cdot Tm_6",
+        latex: "\\frac{dTm_6}{dt} = W_3 \\cdot Yb_e \\cdot Tm_5 - (A_{60} + A_{61}) \\cdot Tm_6 - W_4 \\cdot Yb_e \\cdot Tm_6 - W_{cr,G4} \\cdot Tm_6 \\cdot Tm_0",
         population: ["W3 · Ybₑ · Tm₅", "Observable: I₄₇₇ ∝ A60 · Tm₆"],
-        depopulation: ["A60 · Tm₆", "A61 · Tm₆", "W4 · Ybₑ · Tm₆"]
+        depopulation: ["A60 · Tm₆", "A61 · Tm₆", "W4 · Ybₑ · Tm₆", "WcrG4 · Tm₆ · Tm₀ (only for Tm > 0.1 mol%)"]
     },
     "362": {
         latex: "\\frac{dTm_7}{dt} = W_4 \\cdot Yb_e \\cdot Tm_6 - (A_{70} + A_{71}) \\cdot Tm_7 - W_5 \\cdot Yb_e \\cdot Tm_7",
@@ -381,9 +381,9 @@ const odeDatabase = {
         depopulation: ["A70 · Tm₇", "A71 · Tm₇", "W5 · Ybₑ · Tm₇"]
     },
     "645": {
-        latex: "\\frac{dTm_6}{dt} = W_3 \\cdot Yb_e \\cdot Tm_5 - (A_{60} + A_{61}) \\cdot Tm_6 - W_4 \\cdot Yb_e \\cdot Tm_6",
+        latex: "\\frac{dTm_6}{dt} = W_3 \\cdot Yb_e \\cdot Tm_5 - (A_{60} + A_{61}) \\cdot Tm_6 - W_4 \\cdot Yb_e \\cdot Tm_6 - W_{cr,G4} \\cdot Tm_6 \\cdot Tm_0",
         population: ["W3 · Ybₑ · Tm₅", "Observable: I₆₄₅ ∝ A61 · Tm₆"],
-        depopulation: ["A60 · Tm₆", "A61 · Tm₆", "W4 · Ybₑ · Tm₆"]
+        depopulation: ["A60 · Tm₆", "A61 · Tm₆", "W4 · Ybₑ · Tm₆", "WcrG4 · Tm₆ · Tm₀ (only for Tm > 0.1 mol%)"]
     },
     "452": {
         latex: "\\frac{dTm_7}{dt} = W_4 \\cdot Yb_e \\cdot Tm_6 - (A_{70} + A_{71}) \\cdot Tm_7 - W_5 \\cdot Yb_e \\cdot Tm_7",
@@ -1861,6 +1861,11 @@ window.clearAllDepositedPlots = function() {
 };
 
 function depositCurrentRun(fileName, payload, fitRes, time, measured, fitted, resultsHtml, extraFlags) {
+    if (fitRes && fitRes.literature_accepted === false) {
+        const bad = Object.entries(fitRes.literature_violations || {}).map(([k, v]) => `${k}=${Number(v.value).toPrecision(4)} (allowed ${v.min}–${v.max})`).join(", ");
+        showStatus("warning", `Fit rejected and not recorded: parameter(s) outside literature range: ${bad}`);
+        return;
+    }
     const entry = {
         fileName: fileName || 'Unknown file',
         createdAt: new Date().toISOString(),
@@ -2287,11 +2292,42 @@ function plotRawData() {
 }
 
 // ==================== 17. PHYSICS FUNCTIONS ====================
+// Keep only the ODE terms that are active for the entered Yb/Tm concentrations
+// (same gates as UCOdeModel.system: WcrG4 Tm>0.1, Wcr Tm>=1.0, Wb Yb>10).
+function gateOdeByConcentration(odeData) {
+    if (!odeData) return odeData;
+    const tm = parseFloat(safeGetElement('dopingTmInput')?.value);
+    const yb = parseFloat(safeGetElement('dopingYbInput')?.value);
+    if (!isFinite(tm) && !isFinite(yb)) return odeData;
+    const off = [];
+    if (isFinite(tm) && !(tm > 0.1)) off.push('WcrG4');
+    if (isFinite(tm) && !(tm >= 1.0)) off.push('Wcr');
+    if (isFinite(yb) && !(yb > 10.0)) off.push('Wb');
+    if (!off.length) return odeData;
+    const latexName = { WcrG4: 'W_\\{cr,G4\\}', Wcr: 'W_\\{cr,H4\\}', Wb: 'W_b' };
+    let latex = odeData.latex;
+    off.forEach(n => {
+        latex = latex.replace(new RegExp('\\s[+-]\\s' + latexName[n] + '\\s\\\\cdot[^+-]*?(?=\\s[+-]\\s|$)', 'g'), '');
+    });
+    const keep = s => !off.some(n => new RegExp('^(r[₁₂]\\s=\\s|r_BET\\s=\\s)?' + (n === 'Wcr' ? 'Wcr,H4' : n) + '\\s·').test(s));
+    return {
+        ...odeData,
+        latex,
+        population: odeData.population.filter(keep),
+        depopulation: odeData.depopulation.filter(keep)
+    };
+}
+
+['dopingTmInput', 'dopingYbInput'].forEach(id => {
+    document.addEventListener('input', e => {
+        if (e.target && e.target.id === id && typeof window.updateActivePhysics === 'function') window.updateActivePhysics();
+    });
+});
 window.updateActivePhysics = function() {
     const emission = safeGetElement('emissionSelect')?.value;
     if (!emission) return;
     
-    const odeData = odeDatabase[emission];
+    const odeData = gateOdeByConcentration(odeDatabase[emission]);
     if (!odeData) return;
     
     safeSetText('math-ode', '$$' + odeData.latex + '$$');
@@ -2533,7 +2569,7 @@ function buildMultiChannelFitSequence(slotState = multiChannelSlotState) {
 
         const fallbackSource = fallbackSourceByTarget[emission];
         const fallbackEntry = fallbackSource ? emissionToSlot[fallbackSource] : null;
-        if (fallbackEntry) {
+        if (fallbackEntry && MULTI_CHANNEL_MANDATORY.has(emission)) {
             sequence.push({
                 emission,
                 slotId: fallbackEntry.slotId,
@@ -2550,6 +2586,19 @@ function buildMultiChannelFitSequence(slotState = multiChannelSlotState) {
                 throw new Error('Multi-channel mode requires a 775 nm file to start the sequence.');
             }
             break;
+        }
+    }
+
+    for (const [em, entry] of Object.entries(emissionToSlot)) {
+        if (!sequence.some(s => s.emission === em)) {
+            sequence.push({
+                emission: em,
+                slotId: entry.slotId,
+                fileName: entry.fileName,
+                data: entry.data,
+                sourceEmission: em,
+                usedFallbackSource: false,
+            });
         }
     }
 
@@ -3008,14 +3057,16 @@ window.applyPhysicsSettings = function() {
         }
         
         // Show success message
-        statusDiv.textContent = `✓ Configuration complete | Model: ${data.model_selected || 'multilevel_ode'} | W_CR: ${data.w_cr_active ? 'Active' : 'Inactive'}`;
+        statusDiv.textContent = `✓ Configuration complete | Model: ${data.model_selected || 'multilevel_ode'} | CR G4: ${data.w_cr_g4_active ? 'Active (>0.1% Tm)' : 'Inactive (≤0.1% Tm)'} | CR H4: ${data.w_cr_h4_active ? 'Active (>1.0% Tm)' : 'Inactive (≤1.0% Tm)'} | BT: ${data.w_b_active ? 'Active (>10% Yb)' : 'Inactive (≤10% Yb)'}`;
         statusDiv.style.color = '#4ade80';
         
         // Show model info in console
         console.log(`📊 Model selected: ${data.model_selected}`);
         console.log(`📊 Regime: ${data.regime}`);
         console.log(`📊 W_ET upper bound: ${data.w_et_upper} ms⁻¹`);
-        console.log(`📊 Cross-relaxation: ${data.w_cr_active ? 'Active' : 'Inactive'}`);
+        console.log(`📊 ¹G₄ cross-relaxation: ${data.w_cr_g4_active ? 'Active (>0.1% Tm)' : 'Inactive (≤0.1% Tm)'}`);
+        console.log(`📊 ³H₄ cross-relaxation: ${data.w_cr_h4_active ? 'Active (>1.0% Tm)' : 'Inactive (≤1.0% Tm)'}`);
+        console.log(`📊 Tm→Yb back-transfer: ${data.w_b_active ? 'Active (>10% Yb)' : 'Inactive (≤10% Yb)'}`);
         console.log(`📊 Time scale factor: ${data.time_scale_factor}`);
         
         // Reset border colors
@@ -3882,6 +3933,7 @@ window.fitData = async function(options = {}) {
                 A81: parseFloat(safeGetElement('lit_A81')?.value || '2.0'),
                 Wcr: parseFloat(safeGetElement('lit_Wcr')?.value || '5.0'),
                 Wb: parseFloat(safeGetElement('lit_Wb')?.value || '0.5'),
+                WcrG4: parseFloat(safeGetElement('lit_WcrG4')?.value || '5.0'),
             },
             excitation_wavelength: parseFloat(safeGetElement('excitationWavelength')?.value || '980'),
             smoothing_window: parseInt(safeGetElement('smoothingWindow')?.value || '5', 10),
@@ -4793,7 +4845,8 @@ window.downloadAllResultsExcel = async function() {
         plotDeposits.forEach(dep => {
             Object.keys(dep.ode_parameters || {}).forEach(k => allParamKeys.add(k));
         });
-        const paramKeys = Array.from(allParamKeys).sort();
+        const canonicalOrder = ["Rp","Ay","W1","W2","W3","W4","W5","k21","k35","A10","A50","A60","A61","A70","A71","A80","A81","Wcr","Wb","WcrG4","T_offset"];
+        const paramKeys = Array.from(allParamKeys).sort((a, b) => { const ia = canonicalOrder.indexOf(a), ib = canonicalOrder.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b); });
 
         const paramsHeader = ['Run#', 'File', 'Emission (nm)', 'Best Fit', 'R²', ...paramKeys];
         const paramsRows   = [paramsHeader];
@@ -5060,13 +5113,16 @@ function renderSimEquationPanel(data, emissions, spacing) {
     panel.innerHTML = `
         <div style="font-weight:700; color:#0f172a; margin-bottom:6px;">Equations used in this simulation (ODE model)</div>
         <div style="font-family:'Courier New',monospace; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:8px;">
-            dYb_e/dt = R_p·Yb_g - A_y·Yb_e - Yb_e·(W1·Tm0 + W2·Tm1 + W3·Tm5 + W4·Tm6 + W5·Tm7) + W_b·Tm5·Yb_g<br>
-            dTm5/dt = W2·Yb_e·Tm1 - A50·Tm5 - Wcr·Tm5·Tm0 - W3·Yb_e·Tm5 - W_b·Tm5·Yb_g<br>
-            dTm6/dt = W3·Yb_e·Tm5 - (A60 + A61)·Tm6 - W4·Yb_e·Tm6<br>
+            dYb_e/dt = R_p·Yb_g - A_y·Yb_e - Yb_e·Σᵢ(Wᵢ·Tmᵢ) + W_b·Tm5·Yb_g [Tm &gt; 1.0%]<br>
+            dTm0/dt = … − Wcr,H4·Tm5·Tm0 − WcrG4·Tm6·Tm0 + W_b·Tm5·Yb_g<br>
+            dTm1/dt = … + 2·Wcr,H4·Tm5·Tm0 + WcrG4·Tm6·Tm0<br>
+            dTm5/dt = W2·Yb_e·Tm1 + WcrG4·Tm6·Tm0 - A50·Tm5 - W3·Yb_e·Tm5 - Wcr,H4·Tm5·Tm0 - W_b·Tm5·Yb_g<br>
+            dTm6/dt = W3·Yb_e·Tm5 - (A60 + A61)·Tm6 - W4·Yb_e·Tm6 - WcrG4·Tm6·Tm0<br>
             dTm7/dt = W4·Yb_e·Tm6 - (A70 + A71)·Tm7 - W5·Yb_e·Tm7<br>
             dTm8/dt = W5·Yb_e·Tm7 - A81·Tm8
         </div>
         <div style="font-size:11px; color:#334155; line-height:1.5;">
+            <strong>CR:</strong> WcrG4 models ¹G₄ + ³H₆ → ³H₄ + ³F₄ above 0.1 mol% Tm; Wcr,H4 models ³H₄ + ³H₆ → 2 ³F₄ at or above 1.0 mol% Tm. Back-transfer Wb is enabled above 10 mol% Yb.<br>
             <strong>Observables:</strong> I775∝Tm5, I477∝A60·Tm6, I645∝A61·Tm6, I362/I452∝Tm7, I345∝Tm8.<br>
             <strong>Influence inputs used:</strong> host=${inf.host_material ?? 'N/A'}, anneal=${inf.annealing_c ?? 'N/A'}°C, phonon=${inf.phonon_cm ?? 'N/A'} cm⁻¹, host mole factor=${inf.host_mole_factor ?? 'N/A'} (ref=5).<br>
             <strong>Combined scale factors:</strong> ET=${(inf.combined_et_factor ?? 1).toFixed ? inf.combined_et_factor.toFixed(3) : inf.combined_et_factor}, NR=${(inf.combined_nr_factor ?? 1).toFixed ? inf.combined_nr_factor.toFixed(3) : inf.combined_nr_factor}, RAD=${(inf.combined_rad_factor ?? 1).toFixed ? inf.combined_rad_factor.toFixed(3) : inf.combined_rad_factor}.<br>
@@ -5299,7 +5355,7 @@ window.runCompositionEstimate = function() {
         optimize_kinetics: optimizeKinetics,
         iterative_rounds: parseInt(safeGetElement('estIterRounds')?.value || '2', 10),
         de_maxiter: parseInt(safeGetElement('estDEMaxIter')?.value || '40', 10),
-        kinetics_to_optimize: ['W1', 'W2', 'W3', 'k21', 'k35', 'Wcr', 'Wb', 'A50', 'A60', 'A61'],
+        kinetics_to_optimize: ['W1', 'W2', 'W3', 'k21', 'k35', 'Wcr', 'WcrG4', 'Wb', 'A50', 'A60', 'A61'],
         lit_params: (window.lastFitResult && window.lastFitResult.lit_params) ? window.lastFitResult.lit_params : {},
     };
     safeSetText('simEstStatus', optimizeKinetics

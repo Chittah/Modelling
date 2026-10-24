@@ -73,6 +73,18 @@ const EMISSION_OPTIONS = [
     { value: '362', label: '362 nm - ¹D₂ → ³F₄ UV' },
     { value: '345', label: '345 nm - ¹I₆ → ³F₄' },
 ];
+const EMISSION_TRACE_COLORS = {
+    '345': '#7c3aed',
+    '346': '#7c3aed',
+    '362': '#8b5cf6',
+    '452': '#4f46e5',
+    '454': '#4f46e5',
+    '477': '#2563eb',
+    '645': '#dc2626',
+    '775': '#7f1d1d',
+    '1230': '#9333ea',
+    '1800': '#6d28d9',
+};
 window.addEventListener("DOMContentLoaded", () => {
     const select = document.getElementById("emissionSelect");
 
@@ -90,18 +102,17 @@ window.addEventListener("DOMContentLoaded", () => {
 });
 // --- 2b. Multi-Channel Slot & Order Configuration ---
 const MULTI_CHANNEL_SLOTS = [
-    { id: 'slot775', defaultEmission: '775', role: 'mandatory' },
-    { id: 'slot477', defaultEmission: '477', role: 'mandatory' },
-    { id: 'slot645', defaultEmission: '645', role: 'optional' },
-    { id: 'slot362', defaultEmission: '362', role: 'mandatory' },
-    { id: 'slot452', defaultEmission: '452', role: 'optional' },
-    { id: 'slot345', defaultEmission: '345', role: 'mandatory' },
-    { id: 'slot1800', defaultEmission: '1800', role: 'optional' },
-    { id: 'slot1230', defaultEmission: '1230', role: 'optional' },
+    { id: 'slot775', defaultEmission: '775' },
+    { id: 'slot477', defaultEmission: '477' },
+    { id: 'slot645', defaultEmission: '645' },
+    { id: 'slot362', defaultEmission: '362' },
+    { id: 'slot452', defaultEmission: '452' },
+    { id: 'slot345', defaultEmission: '345' },
+    { id: 'slot1800', defaultEmission: '1800' },
+    { id: 'slot1230', defaultEmission: '1230' },
 ];
 
-const MULTI_CHANNEL_ORDER = ['775', '477', '645', '362', '452', '345'];
-const MULTI_CHANNEL_MANDATORY = new Set(['775', '477', '362', '345']);
+const MULTI_CHANNEL_ORDER = ['775', '1800', '477', '645', '362', '452', '345'];
 const MULTI_CHANNEL_MIN_R2 = {
     '775': 0.99,
     '477': 0.99,
@@ -367,9 +378,9 @@ const odeDatabase = {
         depopulation: ["A₂₀ · [N₂] (Radiative)", "W_nr · [N₂] (Non-radiative)"]
     },
     "775": {
-        latex: "\\frac{dTm_5}{dt} = W_2 \\cdot Yb_e \\cdot Tm_1 - A_{50} \\cdot Tm_5 - W_{cr} \\cdot Tm_5 \\cdot Tm_0 - W_3 \\cdot Yb_e \\cdot Tm_5 - W_b \\cdot Tm_5 \\cdot Yb_g",
-        population: ["W₂ · Ybₑ · Tm₁ (second ET feeding Tm₅)"],
-        depopulation: ["A₅₀ · Tm₅ (radiative 775 nm)", "Wcr · Tm₅ · Tm₀ (cross-relaxation)", "W₃ · Ybₑ · Tm₅ (ET → ¹G₄)", "Wb · Tm₅ · Ybg (back transfer ³H₄→Yb)"]
+        latex: "\\frac{dTm_5}{dt} = k_{35} \\cdot Tm_3 - A_{50} \\cdot Tm_5 - W_3 \\cdot Yb_e \\cdot Tm_5",
+        population: ["k₃₅ · Tm₃ (non-radiative relaxation from ³F₂,₃)"],
+        depopulation: ["A₅₀ · Tm₅ (radiative 775 nm)", "W₃ · Ybₑ · Tm₅ (ET → ¹G₄)"]
     },
     "477": {
         latex: "\\frac{dTm_6}{dt} = W_3 \\cdot Yb_e \\cdot Tm_5 - (A_{60} + A_{61}) \\cdot Tm_6 - W_4 \\cdot Yb_e \\cdot Tm_6",
@@ -536,7 +547,7 @@ const odeDatabaseSingleTm = {
     // ---- Cross-relaxation (W_CR) is omitted because Tm <= 0.05 mol%; add it for Tm >= ~0.5 mol%.
     "260": {
         excitation_label: "260 nm (³H₆ → ³P₂) UV GSA",
-        description: "Single-photon UV excitation into ³P₂. ³P₂ relaxes very fast (W_NR,87 is the largest rate) into ¹I₆, which emits at 346 nm (¹I₆ → ³F₄). ¹D₂, ¹G₄ and ³H₄ are reached only through the slow ¹I₆ → ¹D₂ multiphonon step, so 454/645/775 nm are delayed and weak. No ESA/ETU terms (one photon, low Tm).",
+        description: "Single-photon UV excitation into ³P₂. ³P₂ relaxes very fast (W_NR,87 is the largest rate) into ¹I₆, which emits at 346 nm (¹I₆ → ³F₄). ¹D₂, ¹G₄ and ³H₄ are reached only through the slow ¹I₆ → ¹D₂ multiphonon step, so 454/645/775 nm are delayed and weak. No ESA/ETU; Tm cross-relaxation and optional effective Tm→Yb loss are represented separately.",
         states: {
             "Tm8": {
                 latex: "\\frac{dTm_8}{dt} = G(t) \\cdot Tm_0 - W_{NR,87} \\cdot Tm_8",
@@ -641,7 +652,7 @@ const odeDatabaseSingleTm = {
     },
     "466": {
         excitation_label: "466 nm (³H₆ → ¹G₄) direct GSA",
-        description: "Direct single-photon excitation into ¹G₄. 645 nm (¹G₄ → ³F₄) and 477 nm (¹G₄ → ³H₆) follow ¹G₄ directly, so the 645 nm trace is a pulse-limited rise followed by a single-exponential decay at (A₅₀+A₅₁+A₅₃)⁻¹. ³H₄ (775 nm) is fed only by the weak ¹G₄ → ³H₄ branch. If the sample also contains Yb³⁺, Tm → Yb transfer is an extra loss channel that these single-doped equations do not include.",
+        description: "Direct single-photon excitation into ¹G₄. 645 nm (¹G₄ → ³F₄) and 477 nm (¹G₄ → ³H₆) follow ¹G₄ directly, so the 645 nm trace is a pulse-limited rise followed by a single-exponential decay at (A₅₀+A₅₁+A₅₃)⁻¹. ³H₄ (775 nm) is fed only by the weak ¹G₄ → ³H₄ branch. When Yb³⁺ is present, the displayed and fitted equations include effective Tm → Yb loss on ³H₄ and ¹G₄.",
         states: {
             "Tm5": {
                 latex: "\\frac{dTm_5}{dt} = G(t) \\cdot Tm_0 - (A_{50} + A_{51} + A_{53}) \\cdot Tm_5",
@@ -834,7 +845,7 @@ const developmentFittingDB = {
         remedies: [
             'Use 775 seed transfer first, then fit 645 with accurate mode and all-points enabled.',
             'Keep adaptive loops between 8-14 for 645; beyond this, monitor if SSE plateaus.',
-            'At high Tm (>=1.0%), allow feeder-chain terms W2, A50, Wcr, and Wb to remain active.',
+            'At high Tm (>=1.0%), allow feeder-chain terms W2, A50, WcrH4, WcrG4, and Wb to remain active.',
             'If peak is too low, increase 645 peak-point emphasis slightly; if tail worsens, reduce by one step.',
             'Verify baseline correction and pulse width; misalignment in t0 produces most early-peak error.'
         ],
@@ -865,7 +876,7 @@ const developmentFittingDB = {
         remedies: [
             'Use concentration-aware peak weighting; keep stronger 477 peak penalty for Tm >= 0.3%.',
             'Keep pulse-width fitting enabled with wider bounds for 477.',
-            'At high Tm, unlock feeder terms W2, A50, Wcr and, when needed, Wb/k35.',
+            'At high Tm, unlock feeder terms W2, A50, WcrH4, WcrG4 and, when needed, Wb/k35.',
             'If early peak shifts, prioritize T_offset and pulse width before increasing loop count.',
             'If unresolved at high Tm, introduce explicit quenching term in Tm6 dynamics.'
         ],
@@ -1211,9 +1222,9 @@ function createEmptyMultiChannelSlotState() {
         state[slot.id] = {
             emission: slot.defaultEmission,
             fileName: '',
+            displayName: '',
             data: null,
             metadata: null,
-            role: slot.role,
         };
     });
     return state;
@@ -1246,6 +1257,7 @@ function applyFolderSampleConfig(config) {
     setValue('timeUnit', config.timeUnit || 'ns');
     setValue('excitationWavelength', config.excitationWavelength);
     updateExcitationEnergy();
+    if (!isSingleTmMode()) updateActivePhysics();
 }
 
 function makeFolderLabel(index) {
@@ -1377,9 +1389,8 @@ function renderMultiChannelRows() {
         const emissionOptions = getEmissionOptionsForMode().map(opt => `
             <option value="${opt.value}" ${state.emission === opt.value ? 'selected' : ''}>${opt.label}</option>
         `).join('');
-        const badgeColor = slot.role === 'mandatory' ? '#b45309' : '#475569';
         const statusColor = isCarryForwardSource ? '#166534' : (fileLoaded ? '#166534' : '#64748b');
-        const statusTextBase = fileLoaded ? state.fileName : 'No file loaded';
+        const statusTextBase = fileLoaded ? (state.displayName || state.fileName) : 'No file loaded';
         const statusText = isCarryForwardSource
             ? `${statusTextBase} · Carry-forward source`
             : statusTextBase;
@@ -1388,7 +1399,6 @@ function renderMultiChannelRows() {
         return `
             <div style="display:grid; grid-template-columns:minmax(140px, 1fr) minmax(120px, 0.9fr) auto auto; gap:8px; align-items:center; border:2px solid ${rowBorderColor}; background:${rowBackground}; border-radius:6px; padding:8px;">
                 <div>
-                    <div style="font-size:10px; color:${badgeColor}; font-weight:700; text-transform:uppercase; margin-bottom:4px;">${slot.role}</div>
                     <select id="${slot.id}_emission" onchange="handleMultiChannelEmissionChange('${slot.id}')" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:5px; font-size:11px;">
                         ${emissionOptions}
                     </select>
@@ -1701,7 +1711,7 @@ window.previewMultiChannelSlot = function(slotId) {
     if (state.data) {
         const activeFolder = getActiveMultiChannelFolder();
         const labelPrefix = activeFolder?.name ? `${activeFolder.name} | ` : '';
-        setActiveDatasetView(state.data, `${labelPrefix}${state.fileName || `${state.emission} nm`}`, state.emission);
+        setActiveDatasetView(state.data, `${labelPrefix}${state.displayName || state.fileName || `${state.emission} nm`}`, state.emission);
     }
 };
 
@@ -1713,6 +1723,7 @@ window.deleteMultiChannelFile = function(slotId) {
     }
     const removedName = state.fileName;
     state.fileName = '';
+    state.displayName = '';
     state.data = null;
     state.metadata = null;
     if (activeMultiChannelSlotId === slotId) {
@@ -2106,7 +2117,7 @@ window.cancelFitting = async function() {
 // ==================== 11. VIEW MANAGEMENT ====================
 window.showView = function(viewName) {
     // Hide all views
-    ['homeView', 'analyzerView', 'developmentView', 'simulatorView', 'helpView'].forEach(view => {
+    ['homeView', 'analyzerView', 'developmentView', 'simulatorView', 'motionView', 'helpView'].forEach(view => {
         const panel = safeGetElement(view);
         if (panel) panel.style.display = 'none';
     });
@@ -2114,6 +2125,15 @@ window.showView = function(viewName) {
     // Show selected view
     const selectedView = safeGetElement(viewName + 'View');
     if (selectedView) selectedView.style.display = 'block';
+    if (viewName === 'motion') {
+        const frame = safeGetElement('motionFrame');
+        if (frame) {
+            const host = safeGetElement('hostSelect')?.value || 'YF3';
+            const motionUrl = new URL('motion/index.html', window.location.href);
+            motionUrl.searchParams.set('host', host);
+            if (frame.src !== motionUrl.href) frame.src = motionUrl.href;
+        }
+    }
     
     // Update sidebar
     document.querySelectorAll('.menu-item').forEach(item => {
@@ -2132,8 +2152,8 @@ window.showView = function(viewName) {
     }
     
     // Update sidebar status
-    const statusMap = { home: 'Welcome', analyzer: 'Analyzer Active', development: 'Development Fitting', simulator: 'Lifetime Generator', help: 'Help Center' };
-    const colorMap = { home: '#3498db', analyzer: '#27ae60', development: '#f59e0b', simulator: '#8e44ad', help: '#f39c12' };
+    const statusMap = { home: 'Welcome', analyzer: 'Analyzer Active', development: 'Development Fitting', simulator: 'Lifetime Generator', motion: 'Energy-Transfer Motion', help: 'Help Center' };
+    const colorMap = { home: '#3498db', analyzer: '#27ae60', development: '#f59e0b', simulator: '#8e44ad', motion: '#0e7490', help: '#f39c12' };
     safeSetText('sidebarStatus', statusMap[viewName] || 'Ready');
     const statusEl = safeGetElement('sidebarStatus');
     if (statusEl) statusEl.style.color = colorMap[viewName] || '#27ae60';
@@ -2165,21 +2185,51 @@ window.showRibbonTab = function(tabName) {
 };
 
 // ==================== 13. FILE PARSING ====================
+function parseCsvRecord(line, delimiter = ',') {
+    const fields = [];
+    let value = '';
+    let quoted = false;
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+            if (quoted && line[i + 1] === '"') {
+                value += '"';
+                i++;
+            } else {
+                quoted = !quoted;
+            }
+        } else if (char === delimiter && !quoted) {
+            fields.push(value.trim());
+            value = '';
+        } else {
+            value += char;
+        }
+    }
+    fields.push(value.trim());
+    return fields;
+}
+
 function parseCSVContent(content) {
     const lines = content.split(/\r?\n/).filter(line => line.trim() !== '');
     const metadata = {};
     let dataStartIdx = 0;
+    const delimiter = (lines[0]?.match(/\t/g) || []).length > (lines[0]?.match(/,/g) || []).length
+        ? '\t'
+        : ',';
     
     // Try to detect metadata
     for (let i = 0; i < Math.min(10, lines.length); i++) {
         const line = lines[i].trim();
-        if (line.includes(',')) {
-            const parts = line.split(',').map(p => p.trim());
+        if (line.includes(delimiter)) {
+            const parts = parseCsvRecord(line, delimiter);
             if (parts.length >= 2) {
                 const first = parseFloat(parts[0]);
                 const second = parseFloat(parts[1]);
                 if (isNaN(first) || isNaN(second)) {
-                    metadata[parts[0]] = parts[1];
+                    const key = parts[0].replace(/^\uFEFF/, '').trim();
+                    const values = parts.slice(1);
+                    while (values.length && values[values.length - 1] === '') values.pop();
+                    metadata[key] = values.join(delimiter);
                     dataStartIdx = i + 1;
                 } else {
                     break;
@@ -2203,7 +2253,9 @@ function parseCSVContent(content) {
         const line = lines[i].trim();
         if (!line) continue;
         
-        const parts = line.split(/[,\s]+/);
+        const parts = line.includes(delimiter)
+            ? parseCsvRecord(line, delimiter)
+            : line.split(/\s+/);
         if (parts.length >= 2) {
             const t = parseFloat(parts[0]);
             const I = parseFloat(parts[1]);
@@ -2242,6 +2294,31 @@ function parseJSONContent(content) {
     return { time, intensity, metadata: data.metadata || {} };
 }
 
+function getSampleNameFromMetadata(metadata) {
+    if (!metadata || typeof metadata !== 'object') return '';
+    const valuesByKey = new Map(
+        Object.entries(metadata).map(([key, value]) => [
+            String(key).toLowerCase().replace(/[^a-z0-9]/g, ''),
+            String(value ?? '').trim(),
+        ])
+    );
+    const preferredKeys = [
+        'labels', 'fullsamplename', 'samplename', 'specimenname', 'datasetname',
+        'fullname', 'filename', 'filefullname', 'name', 'sample',
+        'specimen', 'dataset', 'file',
+    ];
+    for (const key of preferredKeys) {
+        const value = valuesByKey.get(key);
+        if (value) return value;
+    }
+    return '';
+}
+
+function isShortDosFilename(fileName) {
+    const basename = String(fileName || '').split(/[\\/]/).pop();
+    return /^[A-Z0-9]{1,6}~\d(?:\.[A-Z0-9]{1,3})?$/i.test(basename);
+}
+
 // ==================== 14. FILE PROCESSING ====================
 function processMultipleFiles(files, fileNameDiv) {
     multipleDatasets = [];
@@ -2262,15 +2339,17 @@ function processMultipleFiles(files, fileNameDiv) {
                 }
                 
                 if (data) {
-                    let displayName = file.name;
+                    const fileName = file.webkitRelativePath || file.name;
+                    const sampleName = getSampleNameFromMetadata(data.metadata);
+                    let displayName = sampleName || fileName;
                     if (data.metadata && Object.keys(data.metadata).length > 0) {
                         const metaParts = Object.entries(data.metadata)
                             .map(([k, v]) => `${k}: ${v}`);
-                        displayName = metaParts.join(' | ');
+                        displayName = sampleName || metaParts.join(' | ');
                     }
                     
                     multipleDatasets.push({
-                        name: file.name,
+                        name: fileName,
                         displayName: displayName,
                         data: data
                     });
@@ -2280,12 +2359,12 @@ function processMultipleFiles(files, fileNameDiv) {
                         rawData = data;
                         singleRawData = data;
                         currentFitIndex = 0;
-                        singleActiveFileName = file.name;
+                        singleActiveFileName = displayName;
                         
                         // Update UI
-                        safeSetText('fileName', '✓ ' + file.name);
-                        safeSetText('analyzerCurrentFile', file.name);
-                        safeSetText('active-filename-display', file.name);
+                        safeSetText('fileName', '✓ ' + displayName);
+                        safeSetText('analyzerCurrentFile', displayName);
+                        safeSetText('active-filename-display', displayName);
                         safeSetText('analyzerFileInfo', `${data.time.length} data points`);
                         
                         const deleteBtn = safeGetElement('deleteDataBtn');
@@ -2296,17 +2375,20 @@ function processMultipleFiles(files, fileNameDiv) {
                     
                     // Update file count
                     refreshSidebarFileCount();
-                    
-                    showStatus('success', `✓ Loaded ${file.name}`);
+                    if (!sampleName && isShortDosFilename(fileName)) {
+                        showStatus('warning', `Loaded file alias ${fileName}, but no full sample name was found in its metadata. Add a "Sample Name,<full name>" metadata row to the CSV.`);
+                    } else {
+                        showStatus('success', `✓ Loaded ${displayName}`);
+                    }
                 }
             } catch (err) {
                 console.error('Error processing file:', err);
-                showStatus('error', `✗ Error loading ${file.name}: ${err.message}`);
+                showStatus('error', `✗ Error loading ${file.webkitRelativePath || file.name}: ${err.message}`);
             }
         };
         
         reader.onerror = () => {
-            showStatus('error', `✗ Error reading ${file.name}`);
+            showStatus('error', `✗ Error reading ${file.webkitRelativePath || file.name}`);
         };
         
         reader.readAsText(file);
@@ -2335,7 +2417,7 @@ function initializeFileUploadHandlers() {
             
             if (fileNameDiv) {
                 fileNameDiv.textContent = files.length === 1 ? 
-                    `✓ ${files[0].name}` : `✓ ${files.length} files selected`;
+                    `✓ ${files[0].webkitRelativePath || files[0].name}` : `✓ ${files.length} files selected`;
             }
             
             processMultipleFiles(files, fileNameDiv);
@@ -2389,10 +2471,14 @@ function initializeFileUploadHandlers() {
                     const parsed = targetFile.name.endsWith('.json')
                         ? parseJSONContent(content)
                         : parseCSVContent(content);
+                    const sourceFileName = targetFile.webkitRelativePath || targetFile.name;
+                    const sampleName = getSampleNameFromMetadata(parsed.metadata);
+                    const displayName = sampleName || sourceFileName;
                     const folder = multiChannelFolders.find(item => item.id === folderId) || getActiveMultiChannelFolder();
                     const state = folder?.slotState?.[slotId];
                     if (!state) return;
-                    state.fileName = targetFile.name;
+                    state.fileName = sourceFileName;
+                    state.displayName = displayName;
                     state.data = parsed;
                     state.metadata = parsed.metadata || {};
                     if (folder?.id && folder.id !== activeMultiChannelFolderId) {
@@ -2404,7 +2490,11 @@ function initializeFileUploadHandlers() {
                     renderMultiChannelFolderQueue();
                     refreshSidebarFileCount();
                     previewMultiChannelSlot(slotId);
-                    showStatus('success', `✓ Loaded ${targetFile.name} for ${state.emission} nm in ${folder?.name || 'active folder'}.`);
+                    if (!sampleName && isShortDosFilename(sourceFileName)) {
+                        showStatus('warning', `Loaded file alias ${sourceFileName}, but no full sample name was found in its metadata. Add a "Sample Name,<full name>" metadata row to the CSV.`);
+                    } else {
+                        showStatus('success', `✓ Loaded ${displayName} for ${state.emission} nm in ${folder?.name || 'active folder'}.`);
+                    }
                 } catch (err) {
                     console.error('Error processing multi-channel file:', err);
                     showStatus('error', `✗ Error loading ${targetFile.name}: ${err.message}`);
@@ -2444,10 +2534,862 @@ function plotRawData() {
 }
 
 // ==================== 17. PHYSICS FUNCTIONS ====================
+const POWER_LAW_PHOTON_ORDER = {
+    '0.01': { '775': 0.995, '477': 2.085, '645': 1.884 },
+    '0.02': { '775': 1.078, '477': 2.086, '645': 1.919 },
+    '0.05': { '775': 1.178, '477': 2.050, '645': 1.996, '362': 2.661, '345': 2.955 },
+    '0.1': { '775': 1.243, '477': 2.079, '645': 2.076, '362': 2.708, '345': 3.225 },
+    '0.2': { '775': 1.370, '477': 2.153, '645': 2.118, '362': 2.935, '345': 2.992 },
+    '0.5': { '775': 1.422, '477': 2.093, '645': 2.078, '362': 2.989, '345': 3.373 },
+    '1.0': { '775': 1.633, '477': 2.263, '645': 2.242 },
+    '2.0': { '775': 1.702, '477': 2.737, '645': 2.034 }
+};
+const ETUC_CHANNEL_ROUTES = {
+    '1800': { startLevel: 'Tm0', states: ['Tm0', 'Tm1', 'Tm2'], transfers: [1], relaxations: ['k21'], radiative: ['A10'] },
+    '775': { startLevel: 'Tm0', states: ['Tm0', 'Tm1', 'Tm2', 'Tm3', 'Tm5'], transfers: [1, 2], relaxations: ['k21', 'k35'], radiative: ['A50'] },
+    '477': { startLevel: 'Tm5', states: ['Tm5', 'Tm6'], transfers: [3], relaxations: [], radiative: ['A60'] },
+    '645': { startLevel: 'Tm5', states: ['Tm5', 'Tm6', 'Tm1'], transfers: [3], relaxations: [], radiative: ['A61'] },
+    '362': { startLevel: 'Tm6', states: ['Tm6', 'Tm7'], transfers: [4], relaxations: [], radiative: ['A70'] },
+    '452': { startLevel: 'Tm6', states: ['Tm6', 'Tm7', 'Tm1'], transfers: [4], relaxations: [], radiative: ['A71'] },
+    '345': { startLevel: 'Tm7', states: ['Tm7', 'Tm8', 'Tm1'], transfers: [5], relaxations: [], radiative: ['A81'] }
+};
+const ETUC_TRANSFER_PAIRS = [
+    ['Tm0', 'Tm2'], ['Tm1', 'Tm3'], ['Tm5', 'Tm6'], ['Tm6', 'Tm7'], ['Tm7', 'Tm8']
+];
+const ENERGY_LEVEL_NAMES = {
+    Tm0: '³H₆', Tm1: '³F₄', Tm2: '³H₅', Tm3: '³F₂,₃',
+    Tm5: '³H₄', Tm6: '¹G₄', Tm7: '¹D₂', Tm8: '¹I₆'
+};
+const Tm_REFERENCE_ENERGIES = {
+    H6: 0, F4: 5900, H5: 8500, H4: 12800, F23: 14550,
+    G4: 21400, D2: 27900, I6: 35000, P2: 38000
+};
+const ENERGY_AXIS_MAX = 40000;
+const ENERGY_AXIS_TOP = 72;
+const ENERGY_AXIS_BOTTOM = 340;
+const energyAxisY = energy => ENERGY_AXIS_BOTTOM - energy / ENERGY_AXIS_MAX * (ENERGY_AXIS_BOTTOM - ENERGY_AXIS_TOP);
+let energySimulationTimer = null;
+
+function updateEnergyDiagram(tmPct, ybPct, emission, singleTmMode, visible) {
+    const diagram = safeGetElement('odeEnergyDiagram');
+    if (!diagram) return;
+    clearInterval(energySimulationTimer);
+    energySimulationTimer = null;
+    diagram.classList.remove('is-playing');
+    diagram.style.display = visible ? 'block' : 'none';
+    if (!visible) return;
+
+    const colors = { pump: '#7c3aed', transfer: '#2563eb', relaxation: '#64748b', radiative: '#059669', feed: '#0891b2', cross: '#d97706', quench: '#db2777' };
+    const markerDefs = Object.entries(colors).map(([name, color]) =>
+        `<marker id="energyArrow${name}" markerWidth="2.6" markerHeight="2.6" refX="2.3" refY="1.3" orient="auto"><path d="M0,0 L2.6,1.3 L0,2.6 Z" fill="${color}"/></marker>`
+    ).join('');
+    const ybLevels = [
+        { id: 'Ybg', label: 'Ybᵍ · ²F₇/₂', energy: 0, y: energyAxisY(0) },
+        { id: 'Ybe', label: 'Ybᵉ · ²F₅/₂', energy: 10200, y: energyAxisY(10200) }
+    ];
+    const displayedYbCount = singleTmMode && ybPct <= 0
+        ? 0
+        : Math.max(1, Math.min(5, Math.ceil(Math.max(0, ybPct) / 10)));
+    const ybMarkerRadius = 4.5 + Math.min(Math.max(0, ybPct), 50) / 50 * 2.5;
+    const backTransferVisualScale = Math.max(0.65, 1 - Math.min(Math.max(0, ybPct), 50) * 0.007);
+    const ybDonorX = index => displayedYbCount === 1
+        ? 145
+        : 90 + index * 110 / (displayedYbCount - 1);
+    const ucLevels = [
+        { id: 'Tm0', label: 'Tm₀ · ³H₆', energy: Tm_REFERENCE_ENERGIES.H6 },
+        { id: 'Tm1', label: 'Tm₁ · ³F₄', energy: Tm_REFERENCE_ENERGIES.F4 },
+        { id: 'Tm2', label: 'Tm₂ · ³H₅', energy: Tm_REFERENCE_ENERGIES.H5 },
+        { id: 'Tm3', label: 'Tm₃ · ³F₂,₃', energy: Tm_REFERENCE_ENERGIES.F23 },
+        { id: 'Tm5', label: 'Tm₅ · ³H₄', energy: Tm_REFERENCE_ENERGIES.H4 },
+        { id: 'Tm6', label: 'Tm₆ · ¹G₄', energy: Tm_REFERENCE_ENERGIES.G4 },
+        { id: 'Tm7', label: 'Tm₇ · ¹D₂', energy: Tm_REFERENCE_ENERGIES.D2 },
+        { id: 'Tm8', label: 'Tm₈ · ¹I₆', energy: Tm_REFERENCE_ENERGIES.I6 }
+    ].map(level => ({ ...level, y: energyAxisY(level.energy) }));
+    const stLevels = [
+        { id: 'H6', label: '³H₆ · ground', energy: Tm_REFERENCE_ENERGIES.H6 },
+        { id: 'F4', label: '³F₄', energy: Tm_REFERENCE_ENERGIES.F4 },
+        { id: 'H4', label: '³H₄', energy: Tm_REFERENCE_ENERGIES.H4 },
+        { id: 'G4', label: '¹G₄', energy: Tm_REFERENCE_ENERGIES.G4 },
+        { id: 'D2', label: '¹D₂', energy: Tm_REFERENCE_ENERGIES.D2 },
+        { id: 'I6', label: '¹I₆', energy: Tm_REFERENCE_ENERGIES.I6 },
+        { id: 'P2', label: '³P₂', energy: Tm_REFERENCE_ENERGIES.P2 }
+    ].map(level => ({ ...level, y: energyAxisY(level.energy) }));
+    const radiativeMap = {
+        '1800': ['Tm1', 'A₁₀'], '775': ['Tm5', 'A₅₀'], '477': ['Tm6', 'A₆₀'],
+        '645': ['Tm6', 'A₆₁'], '362': ['Tm7', 'A₇₀'], '452': ['Tm7', 'A₇₁'],
+        '345': ['Tm8', 'A₈₁']
+    };
+    const singleEmissionMap = {
+        '1800': ['F4', 'A₁₀'], '775': ['H4', 'A₃₀'], '477': ['G4', 'A₅₀'],
+        '645': ['G4', 'A₅₁'], '362': ['D2', 'A₆₀'], '452': ['D2', 'A₆₁'],
+        '454': ['D2', 'A₆₁'], '345': ['I6', 'A₇₁'], '346': ['I6', 'A₇₁']
+    };
+    const selected = singleTmMode ? singleEmissionMap[String(emission)] : radiativeMap[String(emission)];
+    const concentrationKey = Object.keys(POWER_LAW_PHOTON_ORDER).reduce((closest, value) =>
+        Math.abs(Number(value) - tmPct) < Math.abs(Number(closest) - tmPct) ? value : closest
+    );
+    const measuredPhotonOrder = POWER_LAW_PHOTON_ORDER[concentrationKey]?.[String(emission)];
+    const unsupportedReferenceChannel = !singleTmMode && String(emission) === '1230';
+    const unsupportedSelectedEmission = singleTmMode && !selected;
+    const singleExcitation = singleTmMode ? resolveSingleTmExcitation() : null;
+    const singleCascadeAvailable = singleTmMode && Boolean(selected)
+        && singleTmCascadeReachable(singleExcitation, String(emission));
+    const fitPairUnsupported = singleCascadeAvailable
+        && !singleTmReachable(singleExcitation, String(emission));
+    const unreachableSingleEmission = singleTmMode && Boolean(selected) && !singleCascadeAvailable;
+    const activeState = selected?.[0] || (!singleTmMode && unsupportedReferenceChannel ? 'Tm2' : null);
+    const savedEmissionFit = window.multiChannelResults?.[String(emission)];
+    const lastEmissionFit = window.lastFitResult?.emission === String(emission) ? window.lastFitResult : null;
+    const emissionFit = savedEmissionFit || lastEmissionFit;
+    const fitDiagnostics = emissionFit?.diagnostics || {};
+    const fitTiming = emissionFit?.timing_metrics?.fitted || {};
+    const fitUnits = emissionFit?.timing_metrics?.time_unit || safeGetElement('timeUnit')?.value || 'ms';
+    const fittedPulseUs = fitDiagnostics.fitted_pulse_width_us;
+    const enteredPulseUs = Number(safeGetElement('pulseWidthUs')?.value);
+    const excitationNm = singleTmMode
+        ? resolveSingleTmExcitation()?.key
+        : (Number(safeGetElement('excitationWavelength')?.value) || 980);
+    const timingSummary = `<section class="energy-timing-summary">
+        <strong>Excitation and decay timing</strong>
+        <span>Excitation: ${Number.isFinite(Number(excitationNm)) ? `${excitationNm} nm` : 'select wavelength'}${Number.isFinite(enteredPulseUs) && enteredPulseUs > 0 ? ` · pulse ${enteredPulseUs} µs` : ''}${Number.isFinite(fittedPulseUs) ? ` · fitted pulse ${Number(fittedPulseUs).toFixed(2)} µs` : ''}</span>
+        <span>Decay lifetime (1/e): ${fitTiming.decay_tau_1e != null && Number.isFinite(Number(fitTiming.decay_tau_1e)) ? `${Number(fitTiming.decay_tau_1e).toFixed(4)} ${fitUnits}` : 'run this emission fit to calculate'}</span>
+        <span>Rise time (10–90%): ${fitTiming.rise_time_10_90 != null && Number.isFinite(Number(fitTiming.rise_time_10_90)) ? `${Number(fitTiming.rise_time_10_90).toFixed(4)} ${fitUnits}` : 'run this emission fit to calculate'}</span>
+    </section>`;
+    const metadataText = [
+        ...Object.entries(rawData?.metadata || {}).map(([key, value]) => `${key} ${value}`),
+        safeGetElement('active-filename-display')?.textContent || ''
+    ].join(' ');
+    const measuredChannel = metadataText.match(/(?:lifetime|emission|channel)[\s_-]*(\d{3,4})\s*nm/i)?.[1];
+    const channelMismatch = measuredChannel && measuredChannel !== String(emission)
+        ? `Uploaded data metadata identifies ${measuredChannel} nm, but ${emission} nm is selected. The fit will run against the selected model; verify the channel before interpreting its parameters.`
+        : '';
+    const energyAxisMarkup = Array.from({ length: 5 }, (_, index) => {
+        const energy = index * 10000;
+        const y = energyAxisY(energy);
+        return `<line x1="50" y1="${y}" x2="425" y2="${y}" stroke="#e2e8f0" stroke-width="0.8"/>
+            <line x1="45" y1="${y}" x2="50" y2="${y}" stroke="#64748b" stroke-width="0.8"/>
+            <text x="40" y="${y + 3}" text-anchor="end" font-size="7" fill="#64748b">${energy.toLocaleString('en-US')}</text>`;
+    }).join('');
+    const levelLines = (levels, x1, x2, labelX, visibleIds = null) => levels
+        .filter(level => !visibleIds || visibleIds.has(level.id))
+        .map(level =>
+        `<line x1="${x1}" y1="${level.y}" x2="${x2}" y2="${level.y}" stroke="${level.id === activeState ? colors.radiative : '#475569'}" stroke-width="${level.id === activeState ? 3.5 : 2}"/>
+         <text x="${labelX}" y="${level.y + 4}" font-size="10" font-weight="${level.id === activeState ? 700 : 500}" fill="${level.id === activeState ? colors.radiative : '#334155'}">${level.label}<tspan font-size="8"> · ${level.energy.toLocaleString('en-US')}</tspan></text>`
+    ).join('');
+    let transitionId = 0;
+    const transition = (from, to, x, kind, selected = false, fade = false, label = '') => {
+        const source = from.y;
+        const target = to.y;
+        const head = target < source ? 'up' : 'down';
+        const x0 = x;
+        const y0 = source + (head === 'up' ? -7 : 7);
+        const y1 = target + (head === 'up' ? 7 : -7);
+        const mid = (y0 + y1) / 2;
+        const pathId = `energyTransition${transitionId++}`;
+        const path = kind === 'relaxation'
+            ? `M${x0} ${y0} C${x0 + 12} ${y0 + (mid - y0) * 0.55} ${x0 - 8} ${y1 - (y1 - mid) * 0.55} ${x0} ${y1}`
+            : kind === 'cross'
+                ? `M${x0} ${y0} C${x0 - 24} ${y0} ${x0 - 24} ${y1} ${x0} ${y1}`
+            : kind === 'quench'
+                ? `M${x0} ${y0} C${x0 - 24} ${y0} ${x0 - 24} ${y1} ${x0} ${y1}`
+                : `M${x0} ${y0} L${x0} ${y1}`;
+        const classes = [
+            'energy-transition',
+            `energy-transition--${kind}`,
+            selected ? 'is-selected' : '',
+            fade ? 'is-unselected' : ''
+        ].filter(Boolean).join(' ');
+        const labelText = label
+            ? `<text class="energy-rate-label" x="${x0 + 5}" y="${mid - 2}" font-size="8" font-weight="700" fill="${colors[kind]}" stroke="#fff" stroke-width="2.5" paint-order="stroke">${label}</text>`
+            : '';
+        return `<path id="${pathId}" class="${classes}" data-rate-label="${label}" d="${path}" fill="none" stroke="${colors[kind]}" marker-end="url(#energyArrow${kind})"/>
+            ${labelText}
+            <circle class="energy-particle" r="3" aria-hidden="true"><animateMotion dur="${kind === 'radiative' ? '1.8s' : '2.4s'}" repeatCount="indefinite"><mpath href="#${pathId}"/></animateMotion></circle>`;
+    };
+    const levelsById = Object.fromEntries(ucLevels.map(level => [level.id, level]));
+    const singleById = Object.fromEntries(stLevels.map(level => [level.id, level]));
+    let svg = '';
+    let groups = [];
+    let reactionRows = [];
+    if (singleTmMode) {
+        const exc = resolveSingleTmExcitation();
+        const entryId = exc ? ({ P2: 'P2', D2: 'D2', G4: 'G4', H4: 'H4' })[exc.entry] : null;
+        const esaId = exc?.esa || null;
+        const singleBranches = {
+            '1800': { from: 'F4', to: 'H6', rate: 'A₁₀' },
+            '775': { from: 'H4', to: 'H6', rate: 'A₃₀' },
+            '477': { from: 'G4', to: 'H6', rate: 'A₅₀' },
+            '645': { from: 'G4', to: 'F4', rate: 'A₅₁' },
+            '362': { from: 'D2', to: 'H6', rate: 'A₆₀' },
+            '454': { from: 'D2', to: 'F4', rate: 'A₆₁' },
+            '452': { from: 'D2', to: 'F4', rate: 'A₆₁' },
+            '345': { from: 'I6', to: 'F4', rate: 'A₇₁' },
+            '346': { from: 'I6', to: 'F4', rate: 'A₇₁' }
+        };
+        const selectedBranch = singleBranches[String(emission)];
+        const order = ['P2', 'I6', 'D2', 'G4', 'H4', 'F4', 'H6'];
+        const emissionIndex = selectedBranch ? order.indexOf(selectedBranch.from) : -1;
+        const sourceIndexes = [entryId, esaId].filter(Boolean).map(id => order.indexOf(id));
+        const firstSourceIndex = sourceIndexes.length ? Math.min(...sourceIndexes) : 0;
+        const relevantStateIds = new Set(['H6', ...(selectedBranch ? [selectedBranch.from, selectedBranch.to] : [])]);
+        order.slice(firstSourceIndex, emissionIndex + 1).forEach(id => relevantStateIds.add(id));
+        const showCrH4 = tmPct > 0 && relevantStateIds.has('H4')
+            && (relevantStateIds.has('F4') || relevantStateIds.has('H6'));
+        const showCrD2 = tmPct > 0 && relevantStateIds.has('D2')
+            && (relevantStateIds.has('G4') || relevantStateIds.has('F4'));
+        if (showCrH4) relevantStateIds.add('F4');
+        if (showCrD2) {
+            relevantStateIds.add('G4');
+            relevantStateIds.add('F4');
+        }
+        const singleEdges = [
+            { from: 'P2', to: 'I6', rate: 'W₈₇', kind: 'relaxation', x: 176 },
+            { from: 'I6', to: 'D2', rate: 'W₇₆', kind: 'relaxation', x: 196 },
+            { from: 'D2', to: 'G4', rate: 'W₆₅', kind: 'relaxation', x: 216 },
+            { from: 'D2', to: 'H4', rate: 'A₆₃ · feed', kind: 'feed', x: 232 },
+            { from: 'G4', to: 'H4', rate: 'A₅₃ · feed', kind: 'feed', x: 248 },
+            { from: 'H4', to: 'H6', rate: 'A₃₀', kind: 'radiative', x: 276 },
+            { from: 'H4', to: 'F4', rate: 'A₃₁', kind: 'radiative', x: 294 },
+            { from: 'G4', to: 'H6', rate: 'A₅₀', kind: 'radiative', x: 312 },
+            { from: 'G4', to: 'F4', rate: 'A₅₁', kind: 'radiative', x: 330 },
+            { from: 'D2', to: 'H6', rate: 'A₆₀', kind: 'radiative', x: 348 },
+            { from: 'D2', to: 'F4', rate: 'A₆₁', kind: 'radiative', x: 366 },
+            { from: 'I6', to: 'F4', rate: 'A₇₁', kind: 'radiative', x: 384 },
+            { from: 'F4', to: 'H6', rate: 'A₁₀', kind: 'radiative', x: 402 }
+        ];
+        const singleEdgeRelevant = edge => {
+            if (edge.kind === 'radiative') {
+                return Boolean(selectedBranch && edge.from === selectedBranch.from && edge.to === selectedBranch.to);
+            }
+            const fromIndex = order.indexOf(edge.from);
+            const toIndex = order.indexOf(edge.to);
+            return fromIndex >= firstSourceIndex && toIndex <= emissionIndex && toIndex > fromIndex
+                && relevantStateIds.has(edge.from) && relevantStateIds.has(edge.to);
+        };
+        const singleTransitions = singleEdges.filter(singleEdgeRelevant).map(edge =>
+            transition(singleById[edge.from], singleById[edge.to], edge.x, edge.kind, true, false, edge.rate)
+        ).join('');
+        const crossEdges = [];
+        if (showCrH4) {
+            crossEdges.push(transition(singleById.H4, singleById.F4, 205, 'cross', true, false, `Kcr·${tmPct}%`));
+        }
+        if (showCrD2) {
+            crossEdges.push(transition(singleById.D2, singleById.G4, 225, 'cross', true, false, `Kcr·${tmPct}%`));
+        }
+        if (ybPct > 0 && relevantStateIds.has('H4')) {
+            crossEdges.push(transition(singleById.H4, singleById.H6, 64, 'quench', true, false, `Kyb·${ybPct}%`));
+        }
+        if (ybPct > 0 && relevantStateIds.has('G4')) {
+            crossEdges.push(transition(singleById.G4, singleById.H6, 74, 'quench', true, false, `Kyb·${ybPct}%`));
+        }
+        const ybLevelsMarkup = ybPct > 0 ? `
+            <text x="155" y="27" text-anchor="middle" font-size="13" font-weight="700" fill="#334155">Yb³⁺ acceptor</text>
+            ${ybLevels.map(level => `<line x1="75" y1="${level.y}" x2="190" y2="${level.y}" stroke="${level.id === 'Ybg' ? '#334155' : '#475569'}" stroke-width="2.5"/><text x="68" y="${level.y + 4}" text-anchor="end" font-size="9" fill="#334155">${level.label}</text><text x="201" y="${level.y + 3}" font-size="7" fill="#64748b">${level.energy.toLocaleString('en-US')}</text>`).join('')}` : '';
+        svg = `<text x="340" y="27" text-anchor="middle" font-size="13" font-weight="700" fill="#334155">Direct Tm³⁺ excitation${ybPct > 0 ? ' · Yb loss' : ''}</text>
+            <text x="7" y="52" font-size="8" fill="#64748b">Energy (cm⁻¹)</text>
+            <path d="M45 348 L45 65" stroke="#94a3b8" stroke-width="1" marker-end="url(#energyArrowrelaxation)"/>
+            ${energyAxisMarkup}
+            ${ybLevelsMarkup}
+            ${levelLines(stLevels, 245, 350, 430)}
+            ${entryId ? transition(singleById.H6, singleById[entryId], 270, 'pump', true, false, `G · ${exc.key} nm`) : ''}
+            ${esaId ? transition(singleById[entryId], singleById[esaId], 292, 'transfer', true, false, 'G₂ · ESA') : ''}
+            ${singleTransitions}
+            ${crossEdges.join('')}`;
+        const excitationText = exc
+            ? `${exc.key} nm excitation: ³H₆ → ${SINGLE_TM_LEVEL_LABEL[exc.entry]}${exc.esa ? `; G₂ ESA → ${SINGLE_TM_LEVEL_LABEL[exc.esa]}` : ''}`
+            : 'Select a supported excitation wavelength to show the pump entry.';
+        groups = [
+            { title: 'Selected ODE path', color: colors.pump, items: [excitationText, selectedBranch ? `${emission} nm emission: ${selectedBranch.from} → ${selectedBranch.to} (${selectedBranch.rate})` : 'No matching emission transition in the ODE.'] },
+            { title: 'Concentration-dependent terms', color: colors.cross, items: [
+                `Kcr · Tm ${tmPct} mol%${tmPct >= 0.3 ? ' · fitted' : ' · held at prior'}`,
+                ...(ybPct > 0 ? [`Kyb · Yb ${ybPct} mol%`] : [])
+            ] }
+        ];
+        reactionRows = [
+            ...(tmPct > 0 ? [`<div class="energy-reaction" style="border-color:${colors.cross}"><b>Kcr · Tm-Tm cross-relaxation</b><span>³H₄ + ³H₆ → 2 ³F₄; ¹D₂ + ³H₆ → ¹G₄ + ³F₄</span><small>ODE coefficient is multiplied by Tm concentration (${tmPct} mol%). Fitter only frees Kcr at Tm ≥ 0.3 mol%.</small></div>`] : []),
+            ...(ybPct > 0 ? [`<div class="energy-reaction" style="border-color:${colors.quench}"><b>Kyb · optional Tm→Yb quenching</b><span>ODE loss from ³H₄ and ¹G₄, scaled by Yb concentration (${ybPct} mol%).</span></div>`] : [])
+        ];
+    } else {
+        const ybById = Object.fromEntries(ybLevels.map(level => [level.id, level]));
+        const route = ETUC_CHANNEL_ROUTES[String(emission)];
+        const visibleProcesses = new Set([
+            ...(route?.transfers.map(index => `W${index}`) || []),
+            ...(route?.relaxations || []),
+            ...(route?.radiative || [])
+        ]);
+        const visibleStates = new Set(['Tm0', route?.startLevel, ...(route?.states || [])].filter(Boolean));
+        if (tmPct > 0.1 && route && (route.transfers.includes(3) || route.startLevel === 'Tm6')) {
+            visibleProcesses.add('WcrG4');
+            visibleStates.add('Tm6');
+            visibleStates.add('Tm5');
+        }
+        const reachesH4 = route && (route.startLevel === 'Tm5' || route.startLevel === 'Tm6'
+            || route.transfers.includes(2) || route.transfers.includes(3));
+        if (tmPct > 1.0 && reachesH4) {
+            visibleProcesses.add('WcrH4');
+            visibleStates.add('Tm5');
+            visibleStates.add('Tm1');
+        }
+        if (ybPct > 10.0 && reachesH4) {
+            visibleProcesses.add('Wb');
+            visibleStates.add('Tm5');
+        }
+        const odeParameters = emissionFit?.ode_parameters || {};
+        const displayRate = (name, symbol) => {
+            const value = Number(odeParameters[name]);
+            return Number.isFinite(value) ? `${symbol} (${value.toPrecision(3)} ms⁻¹)` : symbol;
+        };
+        const rateNames = ['W₁·Ybₑ', 'W₂·Ybₑ', 'W₃·Ybₑ', 'W₄·Ybₑ', 'W₅·Ybₑ'];
+        const transferPairs = [
+            ['Tm0', 'Tm2'], ['Tm1', 'Tm3'], ['Tm5', 'Tm6'], ['Tm6', 'Tm7'], ['Tm7', 'Tm8']
+        ];
+        const ybTransferMarkup = [1, 2, 3, 4, 5].map(index => {
+            const x = 96 + (index - 1) * 16;
+            const y1 = ybById.Ybe.y + 7;
+            const y2 = ybById.Ybg.y - 7;
+            return `<path d="M${x} ${y1} L${x} ${y2}" fill="none" stroke="${colors.transfer}" stroke-width="1.1" marker-end="url(#energyArrowtransfer)"/>
+                <text x="${x + 2}" y="${(y1 + y2) / 2}" font-size="7" font-weight="700" fill="${colors.transfer}" stroke="#fff" stroke-width="2" paint-order="stroke">W${index}</text>`;
+        }).join('');
+        const transferMarkup = transferPairs.map(([from, to], i) => {
+            const process = `W${i + 1}`;
+            if (!visibleProcesses.has(process)) return '';
+            const tmX = 265 + i * 14;
+            return transition(levelsById[from], levelsById[to], tmX, 'transfer', true, false, rateNames[i]);
+        }).join('');
+        const k21Path = visibleProcesses.has('k21')
+            ? transition(levelsById.Tm2, levelsById.Tm1, 282, 'relaxation', true, false, 'k₂₁')
+            : '';
+        const k35Path = visibleProcesses.has('k35')
+            ? transition(levelsById.Tm3, levelsById.Tm5, 300, 'relaxation', true, false, 'k₃₅')
+            : '';
+        const emissionEdges = [
+            { key: 'A10', from: 'Tm1', to: 'Tm0', x: 320, nm: '1800' },
+            { key: 'A50', from: 'Tm5', to: 'Tm0', x: 336, nm: '775' },
+            { key: 'A60', from: 'Tm6', to: 'Tm0', x: 352, nm: '477' },
+            { key: 'A61', from: 'Tm6', to: 'Tm1', x: 368, nm: '645' },
+            { key: 'A70', from: 'Tm7', to: 'Tm0', x: 384, nm: '362' },
+            { key: 'A71', from: 'Tm7', to: 'Tm1', x: 400, nm: '452' },
+            { key: 'A81', from: 'Tm8', to: 'Tm1', x: 416, nm: '345' }
+        ];
+        const emissionMarkup = emissionEdges
+            .filter(edge => visibleProcesses.has(edge.key))
+            .map(edge => transition(levelsById[edge.from], levelsById[edge.to], edge.x, 'radiative', true, false, `${edge.key} · ${edge.nm} nm`))
+            .join('');
+        const crossMarkup = [
+            ...(visibleProcesses.has('WcrG4') ? [transition(levelsById.Tm6, levelsById.Tm5, 230, 'cross', true, false, `Wcr,G4·${tmPct}%`)] : []),
+            ...(visibleProcesses.has('WcrH4') ? [transition(levelsById.Tm5, levelsById.Tm1, 242, 'cross', true, false, `Wcr,H4·${tmPct}%`)] : []),
+            ...(visibleProcesses.has('Wb') ? [transition(levelsById.Tm5, levelsById.Tm0, 216, 'quench', true, false, `Wb·Yb ${ybPct}%`)] : [])
+        ].join('');
+        const processItems = [
+            { title: 'Yb excitation and decay', color: colors.pump, items: [
+                `${displayRate('Rp', 'Rₚ')}: Ybᵍ → Ybₑ`,
+                `${displayRate('Ay', 'Aᵧ')}: Ybₑ → Ybᵍ`
+            ] },
+            { title: 'Selected ODE transfer path', color: colors.transfer, items: [
+                ...[1, 2, 3, 4, 5].filter(i => visibleProcesses.has(`W${i}`)).map(i => `${displayRate(`W${i}`, `W${i}·Ybₑ`)}: Ybₑ + ${transferPairs[i - 1][0]} → Ybᵍ + ${transferPairs[i - 1][1]}`),
+                ...(visibleProcesses.has('k21') ? [`${displayRate('k21', 'k₂₁')}: Tm₂ → Tm₁`] : []),
+                ...(visibleProcesses.has('k35') ? [`${displayRate('k35', 'k₃₅')}: Tm₃ → Tm₅`] : [])
+            ] },
+            { title: 'Selected emission branch', color: colors.radiative, items: emissionEdges.filter(edge => visibleProcesses.has(edge.key)).map(edge => `${displayRate(edge.key, edge.key)}: ${edge.from} → ${edge.to} (${edge.nm} nm)`) },
+            { title: 'Active concentration pathways', color: colors.cross, items: [
+                `${displayRate('WcrG4', 'Wcr,G4')}·Tm₆·Tm₀ → Tm₅ + Tm₁ · Tm=${tmPct}% · ${tmPct > 0.1 ? 'ON' : 'OFF'} (>0.1 mol%)`,
+                `${displayRate('WcrH4', 'Wcr,H4')}·Tm₅·Tm₀ → 2 Tm₁ · Tm=${tmPct}% · ${tmPct > 1.0 ? 'ON' : 'OFF'} (>1.0 mol%)`,
+                `${displayRate('Wb', 'Wb')}·Tm₅·Ybᵍ → Tm₀ + Ybₑ · Yb=${ybPct}% · ${ybPct > 10.0 ? 'ON' : 'OFF'} (>10 mol%)`
+            ] }
+        ];
+        groups = processItems.filter(group => group.items.length);
+        const gate = (id, title, formula, active) =>
+            `<div id="${id}" class="energy-reaction${active ? ' is-active' : ''}" style="border-color:${active ? colors.cross : '#cbd5e1'};opacity:${active ? 1 : 0.6}"><b>${title} · ${active ? 'ON' : 'OFF'}</b><span>${formula}</span></div>`;
+        reactionRows = [
+            gate('diagramGateCrG4', 'Wcr,G4', 'Tm₆ (¹G₄) + Tm₀ (³H₆) → Tm₅ (³H₄) + Tm₁ (³F₄) · Tm > 0.1 mol%', tmPct > 0.1),
+            gate('diagramGateCrH4', 'Wcr,H4', 'Tm₅ (³H₄) + Tm₀ (³H₆) → 2 Tm₁ (³F₄) · Tm > 1.0 mol%', tmPct > 1.0),
+            gate('diagramGateBackTransfer', 'Wb', 'Tm₅ (³H₄) + Ybᵍ → Tm₀ (³H₆) + Ybₑ · Yb > 10 mol%', ybPct > 10.0)
+        ];
+        svg = `<text x="135" y="27" text-anchor="middle" font-size="13" font-weight="700" fill="#334155">Yb³⁺ sensitizer</text>
+            <text x="340" y="27" text-anchor="middle" font-size="13" font-weight="700" fill="#334155">Tm³⁺ activator</text>
+            <text x="7" y="52" font-size="8" fill="#64748b">Energy (cm⁻¹)</text>
+            <path d="M45 348 L45 65" stroke="#94a3b8" stroke-width="1" marker-end="url(#energyArrowrelaxation)"/>
+            ${energyAxisMarkup}
+            ${ybLevels.map(level => `<line x1="75" y1="${level.y}" x2="190" y2="${level.y}" stroke="#475569" stroke-width="2.5"/><text x="68" y="${level.y + 4}" text-anchor="end" font-size="9" fill="#334155">${level.label}</text><text x="201" y="${level.y + 3}" font-size="7" fill="#64748b">${level.energy.toLocaleString('en-US')}</text>`).join('')}
+            ${ybTransferMarkup}
+            ${levelLines(ucLevels, 245, 350, 430)}
+            ${transition(ybById.Ybg, ybById.Ybe, 78, 'pump', true, false, 'Rₚ')}
+            ${transition(ybById.Ybe, ybById.Ybg, 174, 'relaxation', true, false, 'Aᵧ')}
+            ${transferMarkup}
+            ${k21Path}${k35Path}${emissionMarkup}${crossMarkup}`;
+    }
+
+    const groupHtml = groups.map(group =>
+        `<section class="energy-process-group"><h4 style="border-left-color:${group.color}">${group.title}</h4>${group.items.map(item => `<div>${item}</div>`).join('')}</section>`
+    ).join('');
+    const title = `${emission} nm · ${singleTmMode ? 'direct Tm³⁺ excitation' : 'Yb³⁺/Tm³⁺'} ODE energy-level diagram`;
+    const lineLegend = `<div class="energy-line-legend" aria-label="Transition line legend">
+        <span><i class="energy-line-swatch is-pump"></i>Excitation</span>
+        <span><i class="energy-line-swatch is-transfer"></i>Energy transfer</span>
+        <span><i class="energy-line-swatch is-relaxation"></i>Non-radiative relaxation</span>
+        <span><i class="energy-line-swatch is-feed"></i>Radiative feeding</span>
+        <span><i class="energy-line-swatch is-radiative"></i>Emission</span>
+        <span><i class="energy-line-swatch is-cross"></i>Cross-relaxation</span>
+        <span><i class="energy-line-swatch is-quench"></i>Back-transfer / quenching</span>
+    </div>`;
+    const routeExcitation = singleTmMode ? resolveSingleTmExcitation() : null;
+    const selectedRoute = singleTmMode
+        ? (routeExcitation?.key
+            ? `${routeExcitation.key} nm excitation → ${SINGLE_TM_LEVEL_LABEL[routeExcitation.entry]}${routeExcitation.esa ? ` → ESA ${SINGLE_TM_LEVEL_LABEL[routeExcitation.esa]}` : ''} → ${emission} nm emission`
+            : `Selected Tm excitation → ${emission} nm emission`)
+        : (() => {
+            const route = ETUC_CHANNEL_ROUTES[String(emission)];
+            const start = route?.startLevel === 'Tm0'
+                ? 'Tm starts at ³H₆'
+                : `Residual Tm starts at ${ENERGY_LEVEL_NAMES[route?.startLevel] || 'the selected level'}`;
+            const transfers = route?.transfers.map(index => `W${index}`).join(' → ') || 'no transfer';
+            return `${start} · Yb 980 nm → ${transfers} → ${emission} nm emission`;
+        })();
+    const applicationExamples = {
+        '1800': 'NIR: optical sensing and short-range optical communications (material-dependent).',
+        '775': 'NIR: fluorescence bioimaging and optical sensing research.',
+        '477': 'Blue: display phosphors, optical tagging, and fluorescence excitation.',
+        '645': 'Red: display phosphors, optical tagging, and fluorescence imaging research.',
+        '362': 'UV: UV fluorescence spectroscopy and photonic-material characterization.',
+        '452': 'Blue-violet: fluorescence analysis and display-phosphor research.',
+        '345': 'UV-A: fluorescence spectroscopy and UV photonic-material studies.'
+    };
+    const applicationText = applicationExamples[String(emission)];
+    const simulationSteps = [];
+    if (singleTmMode) {
+        const excitation = resolveSingleTmExcitation();
+        const emittingLevel = SINGLE_TM_EMISSION_LEVEL[String(emission)];
+        const emissionTargets = {
+            '1800': 'H6', '775': 'H6', '477': 'H6', '645': 'F4',
+            '362': 'H6', '454': 'F4', '452': 'F4', '345': 'F4', '346': 'F4'
+        };
+        const singleEmissionRates = {
+            '1800': 'A₁₀', '775': 'A₃₀', '477': 'A₅₀', '645': 'A₅₁',
+            '362': 'A₆₀', '454': 'A₆₁', '452': 'A₆₁', '345': 'A₇₁', '346': 'A₇₁'
+        };
+        if (excitation && emittingLevel && SINGLE_TM_LEVEL_LABEL[emittingLevel] && singleTmCascadeReachable(excitation, emission)) {
+            simulationSteps.push({
+                kind: 'pump',
+                title: `Excite Tm³⁺: ³H₆ → ${SINGLE_TM_LEVEL_LABEL[excitation.entry]}`,
+                detail: `${excitation.key} nm pump`,
+                ion: 'tm', fromLevel: 'H6', toLevel: excitation.entry
+            });
+            if (excitation.esa) {
+                simulationSteps.push({
+                    kind: 'transfer',
+                    title: `Excited-state absorption: ${SINGLE_TM_LEVEL_LABEL[excitation.entry]} → ${SINGLE_TM_LEVEL_LABEL[excitation.esa]}`,
+                    detail: 'A second pump photon promotes the same Tm ion',
+                    ion: 'tm', fromLevel: excitation.entry, toLevel: excitation.esa
+                });
+            }
+            const startLevel = excitation.esa && SINGLE_TM_CASCADE.indexOf(excitation.esa) < SINGLE_TM_CASCADE.indexOf(excitation.entry)
+                ? excitation.esa
+                : excitation.entry;
+            const startIndex = SINGLE_TM_CASCADE.indexOf(startLevel);
+            const endIndex = SINGLE_TM_CASCADE.indexOf(emittingLevel);
+            if (startIndex >= 0 && endIndex >= startIndex) {
+                let ybBranchIndex = 0;
+                const addYbTransfer = level => {
+                    if (ybPct <= 0 || !['H4', 'G4'].includes(level)) return;
+                    simulationSteps.push({
+                        kind: 'back-transfer',
+                        title: `Competing Tm→Yb transfer · Kyb from ${SINGLE_TM_LEVEL_LABEL[level]}`,
+                        detail: `Yb = ${ybPct} mol%; the ODE models this as an effective Tm loss from ${SINGLE_TM_LEVEL_LABEL[level]} to ³H₆, without explicit Yb kinetics.`,
+                        ion: 'tm', donorIndex: ybBranchIndex++ % displayedYbCount,
+                        fromLevel: level, toLevel: 'H6',
+                        donorFromLevel: 'Ybg', donorToLevel: 'Ybe'
+                    });
+                };
+                addYbTransfer(startLevel);
+                for (let i = startIndex; i < endIndex; i += 1) {
+                    const from = SINGLE_TM_CASCADE[i];
+                    const to = SINGLE_TM_CASCADE[i + 1];
+                    simulationSteps.push({
+                        kind: 'relax',
+                        title: `Relax: ${SINGLE_TM_LEVEL_LABEL[from]} → ${SINGLE_TM_LEVEL_LABEL[to]}`,
+                        detail: 'Cascade feeding toward the selected emission level',
+                        ion: 'tm', fromLevel: from, toLevel: to
+                    });
+                    addYbTransfer(to);
+                }
+                simulationSteps.push({
+                    kind: 'emit',
+                    title: `Emit ${emission} nm: ${SINGLE_TM_LEVEL_LABEL[emittingLevel]} → ${emissionTargets[String(emission)] === 'H6' ? '³H₆' : SINGLE_TM_LEVEL_LABEL[emissionTargets[String(emission)]]}`,
+                    detail: 'Radiative transition; photon shown as a burst',
+                    ion: 'tm', fromLevel: emittingLevel, toLevel: emissionTargets[String(emission)],
+                    emissionRate: singleEmissionRates[String(emission)]
+                });
+            }
+        }
+    } else {
+        const route = ETUC_CHANNEL_ROUTES[String(emission)];
+        const emissionEdges = {
+            '1800': ['Tm1', 'Tm0'], '775': ['Tm5', 'Tm0'], '477': ['Tm6', 'Tm0'],
+            '645': ['Tm6', 'Tm1'], '362': ['Tm7', 'Tm0'], '452': ['Tm7', 'Tm1'],
+            '345': ['Tm8', 'Tm1']
+        };
+        if (route && emissionEdges[String(emission)]) {
+            const addH4Branches = () => {
+                if (tmPct > 1) {
+                    simulationSteps.push({
+                        kind: 'cross-relax',
+                        title: 'Tm cross-relaxation Wcr,H4: Tm ³H₄* + Tm ³H₆ → 2 Tm ³F₄',
+                        detail: `Tm = ${tmPct} mol%; the excited and ground-state ions form a competing branch`,
+                        ion: 'tm', fromLevel: 'Tm5', toLevel: 'Tm1',
+                        partnerFromLevel: 'Tm0', partnerToLevel: 'Tm1'
+                    });
+                }
+                if (ybPct > 10) {
+                    const donorIndex = route.transfers.length % displayedYbCount;
+                    simulationSteps.push({
+                        kind: 'back-transfer',
+                        title: 'Competing Wb branch at Tm ³H₄: Tm + Ybᵍ → Tm ³H₆ + Ybᵉ',
+                        detail: `Yb = ${ybPct} mol%; the smaller Tm marker indicates qualitative depletion, not a fitted population fraction`,
+                        ion: 'tm', donorIndex, fromLevel: 'Tm5', toLevel: 'Tm0',
+                        donorFromLevel: 'Ybg', donorToLevel: 'Ybe'
+                    });
+                    simulationSteps.push({
+                        kind: 'yb-relax',
+                        title: 'Yb relaxes: ²F₅/₂ → ²F₇/₂ (Aᵧ)',
+                        detail: 'The back-transferred Yb excitation decays; the surviving Tm ³H₄ population continues',
+                        ion: 'yb', donorIndex, fromLevel: 'Ybe', toLevel: 'Ybg'
+                    });
+                }
+            };
+            const addG4Branch = () => {
+                if (tmPct > 0.1) {
+                    simulationSteps.push({
+                        kind: 'cross-relax',
+                        title: 'Tm cross-relaxation Wcr,G4: Tm ¹G₄* + Tm ³H₆ → Tm ³H₄ + Tm ³F₄',
+                        detail: `Tm = ${tmPct} mol%; the excited and ground-state ions form a competing branch`,
+                        ion: 'tm', fromLevel: 'Tm6', toLevel: 'Tm5',
+                        partnerFromLevel: 'Tm0', partnerToLevel: 'Tm1'
+                    });
+                }
+            };
+            if (route.startLevel === 'Tm5') addH4Branches();
+            if (route.startLevel === 'Tm6') addG4Branch();
+            route.transfers.forEach(index => {
+                const [from, to] = ETUC_TRANSFER_PAIRS[index - 1];
+                const donorIndex = (index - 1) % displayedYbCount;
+                simulationSteps.push({
+                    kind: 'pump',
+                    title: `Excite Yb³⁺ before ETU step ${index}: ²F₇/₂ → ²F₅/₂`,
+                    detail: 'A pump photon excites this Yb donor before energy transfer',
+                    ion: 'yb', donorIndex, fromLevel: 'Ybg', toLevel: 'Ybe'
+                });
+                simulationSteps.push({
+                    kind: 'transfer',
+                    title: `Energy transfer W${index}: Yb* + Tm ${ENERGY_LEVEL_NAMES[from]} → Yb + Tm ${ENERGY_LEVEL_NAMES[to]}`,
+                    detail: 'Dipole–dipole interaction transfers energy to the indicated Tm state; Yb returns to ²F₇/₂',
+                    ion: 'tm', fromLevel: from, toLevel: to,
+                    donorIndex, donorFromLevel: 'Ybe', donorToLevel: 'Ybg'
+                });
+                if (index === 1) {
+                    simulationSteps.push({
+                        kind: 'relax',
+                        title: 'Relax: Tm ³H₅ → ³F₄ (k₂₁)',
+                        detail: 'The first transferred excitation cascades to ³F₄',
+                        ion: 'tm', fromLevel: 'Tm2', toLevel: 'Tm1'
+                    });
+                } else if (index === 2) {
+                    simulationSteps.push({
+                        kind: 'relax',
+                        title: 'Relax: Tm ³F₂,₃ → ³H₄ (k₃₅)',
+                        detail: 'The next transferred excitation cascades to ³H₄',
+                        ion: 'tm', fromLevel: 'Tm3', toLevel: 'Tm5'
+                    });
+                }
+                if (index === 2 || to === 'Tm5') addH4Branches();
+                if (to === 'Tm6') addG4Branch();
+            });
+            const [from, to] = emissionEdges[String(emission)];
+            const emissionRates = {
+                '1800': 'A10', '775': 'A50', '477': 'A60', '645': 'A61',
+                '362': 'A70', '452': 'A71', '345': 'A81'
+            };
+            simulationSteps.push({
+                kind: 'emit',
+                title: `Emit ${emission} nm: Tm ${ENERGY_LEVEL_NAMES[from]} → ${ENERGY_LEVEL_NAMES[to]}`,
+                detail: 'Radiative transition; photon shown as a burst',
+                ion: 'tm', fromLevel: from, toLevel: to, emissionRate: emissionRates[String(emission)]
+            });
+        }
+    }
+    const simulationLevelY = singleTmMode
+        ? Object.fromEntries([...stLevels, ...ybLevels].map(level => [level.id, level.y]))
+        : Object.fromEntries([...ucLevels, ...ybLevels].map(level => [level.id, level.y]));
+    const tmIonX = singleTmMode ? 215 : 285;
+    const initialTmState = singleTmMode
+        ? 'H6'
+        : ETUC_CHANNEL_ROUTES[String(emission)]?.startLevel || 'Tm0';
+    const initialTmY = simulationLevelY[initialTmState] ?? ENERGY_AXIS_BOTTOM;
+    const initialTmClass = !singleTmMode && initialTmState !== 'Tm0' ? 'is-excited' : 'is-ground';
+    simulationSteps.forEach(step => {
+        step.fromY = simulationLevelY[step.fromLevel] ?? 340;
+        step.toY = simulationLevelY[step.toLevel] ?? step.fromY;
+        step.donorFromY = simulationLevelY[step.donorFromLevel] ?? null;
+        step.donorToY = simulationLevelY[step.donorToLevel] ?? null;
+        step.partnerFromY = simulationLevelY[step.partnerFromLevel] ?? null;
+        step.partnerToY = simulationLevelY[step.partnerToLevel] ?? null;
+    });
+    const simulationOverlay = simulationSteps.length ? `
+        <g id="energySimulationOverlay" class="energy-simulation-overlay" aria-hidden="true">
+            <path id="energySimTransferInteraction" class="energy-sim-interaction" marker-end="url(#energyArrowtransfer)" visibility="hidden"/>
+            <text id="energySimInteractionLabel" class="energy-sim-interaction-label" visibility="hidden">dipole–dipole transfer</text>
+            ${Array.from({ length: displayedYbCount }, (_, index) => {
+                const x = ybDonorX(index);
+                const id = index === 0 ? 'energySimYb' : `energySimYb${index}`;
+                return `<g id="${id}" class="energy-sim-particle energy-sim-particle--yb" data-ground-x="${x}" data-radius="${ybMarkerRadius}" transform="translate(${x} 340)" visibility="${singleTmMode && ybPct <= 0 ? 'hidden' : 'visible'}">
+                    <circle r="${ybMarkerRadius}"/>
+                    <path class="energy-sim-yb-excited-sector" d="M0 0 L0 ${-ybMarkerRadius} A${ybMarkerRadius} ${ybMarkerRadius} 0 0 1 0 ${ybMarkerRadius} Z"/>
+                    <text text-anchor="middle" y="2">Yb</text>
+                </g>`;
+            }).join('')}
+            <text class="energy-sim-yb-label" x="145" y="365" text-anchor="middle" visibility="${singleTmMode && ybPct <= 0 ? 'hidden' : 'visible'}">Yb · ${ybPct}%</text>
+            <g id="energySimTm" class="energy-sim-particle energy-sim-particle--tm ${initialTmClass}" transform="translate(${tmIonX} ${initialTmY})">
+                <circle r="9"/><text text-anchor="middle" y="3">Tm</text>
+            </g>
+            <g id="energySimTmBackTransfer" class="energy-sim-particle energy-sim-particle--tm energy-sim-particle--branch" transform="translate(${tmIonX + 24} 340)" visibility="hidden">
+                <circle r="7"/><text text-anchor="middle" y="2">Tm</text>
+            </g>
+            <g id="energySimTmPartner" class="energy-sim-particle energy-sim-particle--tm" transform="translate(${tmIonX + 25} 340)" visibility="hidden">
+                <circle r="8"/><text text-anchor="middle" y="3">Tm</text>
+            </g>
+            <text class="energy-sim-branch-label" x="${tmIonX + 28}" y="360" text-anchor="middle" visibility="hidden">competing branch</text>
+            <text id="energySimPhoton" class="energy-sim-photon" x="${tmIonX + 20}" y="200" visibility="hidden">✦</text>
+        </g>` : '';
+    const runEmissionOptions = (singleTmMode ? Object.keys(singleEmissionMap) : Object.keys(ETUC_CHANNEL_ROUTES))
+        .map(wavelength => `<option value="${wavelength}"${String(emission) === wavelength ? ' selected' : ''}>${wavelength} nm</option>`)
+        .join('');
+    const suggestedPhotonCount = Number.isFinite(measuredPhotonOrder)
+        ? Math.max(1, Math.round(measuredPhotonOrder))
+        : Math.max(1, singleTmMode
+            ? simulationSteps.filter(step => step.kind === 'pump' || step.kind === 'transfer').length
+            : (ETUC_CHANNEL_ROUTES[String(emission)]?.transfers.length || 0));
+    const etucTransferCount = singleTmMode ? null : (ETUC_CHANNEL_ROUTES[String(emission)]?.transfers.length || 0);
+    const photonEstimateSummary = singleTmMode
+        ? `Approximate pump photon count: ${suggestedPhotonCount}`
+        : `Power-law estimate: approximately ${suggestedPhotonCount} absorbed photon${suggestedPhotonCount === 1 ? '' : 's'} · ETUC pathway: ${etucTransferCount} donor transfer${etucTransferCount === 1 ? '' : 's'}`;
+    diagram.innerHTML = `<div class="energy-diagram-heading"><div class="energy-diagram-title">${title}</div>
+            <div class="energy-run-controls">
+                <label>Emission <select class="energy-run-emission" aria-label="Emission wavelength for transfer simulation">${runEmissionOptions}</select></label>
+                <button type="button" class="energy-play-button" aria-pressed="false"${simulationSteps.length ? '' : ' disabled'}>▶ Run transfer · ${emission} nm</button>
+            </div>
+        </div>
+        ${unsupportedReferenceChannel ? '<div class="energy-model-warning">1230 nm appears in the selector and reference ODE, but it is not a radiative channel in the active Yb/Tm fitting ODE. This view marks ³H₅ only; it does not imply the fitter models 1230 nm emission.</div>' : ''}
+        ${unsupportedSelectedEmission ? '<div class="energy-model-warning">The selected emission has no matching observation branch in the fitted single-Tm ODE.</div>' : ''}
+        ${unreachableSingleEmission ? '<div class="energy-model-warning">The selected single-Tm excitation cannot populate this emission level. Choose a supported excitation/emission pair to simulate the route.</div>' : ''}
+        ${fitPairUnsupported ? '<div class="energy-model-warning">This energy-level path is shown for illustration, but this excitation/emission pairing is not in the fitter’s allowed combinations.</div>' : ''}
+        ${channelMismatch ? `<div class="energy-model-warning">${channelMismatch}</div>` : ''}
+        <div class="energy-diagram-layout">
+            <div class="energy-svg-wrap">
+                <svg class="energy-level-svg" viewBox="0 0 580 390" role="img" aria-label="${title}" style="display:block;width:100%;height:auto;font-family:Arial,sans-serif">
+                <defs>${markerDefs}</defs>${svg}${simulationOverlay}
+                <text x="255" y="380" text-anchor="middle" font-size="8" fill="#64748b">Representative YF₃:Tm³⁺ energies (cm⁻¹); higher terms are approximate.</text>
+                </svg>
+                <div class="energy-state-legend" aria-label="Ion state color legend">
+                    <span><i class="energy-state-swatch is-tm-ground"></i>Tm ground</span><span><i class="energy-state-swatch is-tm-excited"></i>Tm excited</span>
+                    ${singleTmMode && ybPct <= 0 ? '' : '<span><i class="energy-state-swatch is-yb-ground"></i>Yb ground</span><span><i class="energy-state-swatch is-yb-excited"></i>Yb excited</span>'}
+                </div>
+                <output class="energy-run-status" aria-live="polite">Ready to run ${emission} nm · ${photonEstimateSummary}</output>
+            </div>
+            <aside class="energy-process-key"><h3>Selected emission route</h3><p class="energy-selected-route">${selectedRoute}</p>
+                <h3>Processes and transitions</h3>${lineLegend}${groupHtml}${applicationText ? `<section class="energy-application"><strong>Example application</strong><span>${applicationText}</span></section>` : ''}</aside>
+        </div>
+        ${timingSummary}
+        <div class="energy-reaction-list"><h3>${singleTmMode ? 'Concentration-dependent terms in the direct-Tm ODE' : 'Cross-relaxation and concentration gates'}</h3>${reactionRows.join('')}</div>`;
+    const playButton = diagram.querySelector('.energy-play-button');
+    playButton?.addEventListener('click', () => {
+        if (energySimulationTimer) {
+            clearInterval(energySimulationTimer);
+            energySimulationTimer = null;
+            diagram.classList.remove('is-playing');
+            playButton.setAttribute('aria-pressed', 'false');
+            playButton.textContent = `▶ Run transfer · ${emission} nm`;
+            return;
+        }
+        if (!simulationSteps.length) return;
+        diagram.classList.add('is-playing');
+        playButton.setAttribute('aria-pressed', 'true');
+        playButton.textContent = 'Ⅱ Pause transfer';
+        const overlay = diagram.querySelector('#energySimulationOverlay');
+        const ybParticles = [...diagram.querySelectorAll('.energy-sim-particle--yb')];
+        const tmParticle = diagram.querySelector('#energySimTm');
+        const backTransferTmParticle = diagram.querySelector('#energySimTmBackTransfer');
+        const partnerParticle = diagram.querySelector('#energySimTmPartner');
+        const interaction = diagram.querySelector('#energySimTransferInteraction');
+        const interactionLabel = diagram.querySelector('#energySimInteractionLabel');
+        const photon = diagram.querySelector('#energySimPhoton');
+        const branchLabel = diagram.querySelector('.energy-sim-branch-label');
+        const radiativeTransitions = [...diagram.querySelectorAll('.energy-transition--radiative')];
+        const status = diagram.querySelector('.energy-run-status');
+        let survivingTmScale = 1;
+        const setIonPosition = (particle, x, y, scale = 1) => {
+            if (particle && Number.isFinite(y)) particle.setAttribute('transform', `translate(${x} ${y}) scale(${scale})`);
+        };
+        const setTmState = (particle, excited) => {
+            particle?.classList.toggle('is-excited', excited);
+            particle?.classList.toggle('is-ground', !excited);
+        };
+        const setYbState = (particle, excited) => {
+            particle?.classList.toggle('is-excited', excited);
+            particle?.classList.toggle('is-ground', !excited);
+        };
+        const donorForStep = step => ybParticles[step.donorIndex || 0] || ybParticles[0];
+        const setInteraction = (step, donor, reverse = false) => {
+            if (!interaction || !interactionLabel || !donor) return;
+            interaction.classList.toggle('is-back-transfer', reverse);
+            const donorX = Number(donor.dataset.groundX);
+            const donorRadius = Number(donor.dataset.radius);
+            const sourceX = reverse ? tmIonX - 9 : donorX + donorRadius;
+            const targetX = reverse ? donorX + donorRadius : tmIonX - 9;
+            const sourceY = reverse ? step.fromY : step.donorFromY;
+            const targetY = reverse ? step.donorFromY : step.toY;
+            const bendY = (sourceY + targetY) / 2 - (reverse ? -18 : 18);
+            interaction.setAttribute('d', `M${sourceX} ${sourceY} Q${(sourceX + targetX) / 2} ${bendY} ${targetX} ${targetY}`);
+            interaction.setAttribute('visibility', 'visible');
+            interaction.classList.add('is-active');
+            interactionLabel.setAttribute('x', String((sourceX + targetX) / 2));
+            interactionLabel.setAttribute('y', String(bendY - 4));
+            interactionLabel.textContent = reverse
+                ? (singleTmMode ? 'Tm→Yb transfer Kyb' : 'back-transfer Wb')
+                : 'dipole–dipole transfer';
+            interactionLabel.setAttribute('visibility', 'visible');
+        };
+        const runStep = index => {
+            const step = simulationSteps[index];
+            if (!step) {
+                clearInterval(energySimulationTimer);
+                energySimulationTimer = null;
+                diagram.classList.remove('is-playing');
+                playButton.setAttribute('aria-pressed', 'false');
+                playButton.textContent = `↻ Run transfer · ${emission} nm`;
+                status.classList.add('is-complete');
+                status.textContent = `${emission} nm emission reached · ${photonEstimateSummary}.`;
+                return;
+            }
+            status.classList.remove('is-complete');
+            overlay?.classList.add('is-active');
+            const donor = donorForStep(step);
+            if (donor && (step.ion === 'yb' || step.donorFromY != null)) donor.setAttribute('visibility', 'visible');
+            ybParticles.forEach(particle => {
+                particle.classList.remove('is-energy-transfer');
+                if (!(step.kind === 'transfer' && particle === donor)) setYbState(particle, false);
+            });
+            partnerParticle?.setAttribute('visibility', step.partnerFromY != null ? 'visible' : 'hidden');
+            branchLabel?.setAttribute('visibility', step.kind === 'cross-relax' ? 'visible' : 'hidden');
+            photon?.setAttribute('visibility', step.kind === 'emit' ? 'visible' : 'hidden');
+            radiativeTransitions.forEach(path => path.classList.remove('is-emitting'));
+            interaction?.setAttribute('visibility', 'hidden');
+            interaction?.classList.remove('is-active');
+            interactionLabel?.setAttribute('visibility', 'hidden');
+            const tmScale = step.kind === 'back-transfer' ? backTransferVisualScale : survivingTmScale;
+            if (step.kind === 'cross-relax') {
+                backTransferTmParticle?.setAttribute('visibility', 'visible');
+                setIonPosition(backTransferTmParticle, tmIonX + 24, step.fromY);
+                setTmState(backTransferTmParticle, true);
+                setTmState(partnerParticle, false);
+                setIonPosition(partnerParticle, tmIonX + 38, step.partnerFromY);
+                backTransferTmParticle?.getBoundingClientRect();
+                setTmState(partnerParticle, true);
+                setIonPosition(backTransferTmParticle, tmIonX + 24, step.toY);
+                setIonPosition(partnerParticle, tmIonX + 38, step.partnerToY);
+            } else if (step.kind === 'back-transfer') {
+                survivingTmScale = backTransferVisualScale;
+                if (tmParticle) setIonPosition(tmParticle, tmIonX, step.fromY, survivingTmScale);
+                backTransferTmParticle?.setAttribute('visibility', 'visible');
+                setIonPosition(backTransferTmParticle, tmIonX + 24, step.fromY);
+                backTransferTmParticle?.getBoundingClientRect();
+                setTmState(backTransferTmParticle, false);
+                setIonPosition(backTransferTmParticle, tmIonX + 24, step.toY, backTransferVisualScale);
+                donor?.classList.add('is-energy-transfer', 'is-excited');
+                setYbState(donor, true);
+                setIonPosition(donor, Number(donor?.dataset.groundX), step.donorToY);
+                setInteraction(step, donor, true);
+            } else if (step.kind === 'yb-relax') {
+                setIonPosition(donor, Number(donor?.dataset.groundX), step.toY);
+                setYbState(donor, false);
+            } else if (step.kind === 'pump' && step.ion === 'yb') {
+                setIonPosition(donor, Number(donor?.dataset.groundX), step.toY);
+                setYbState(donor, true);
+            } else if (step.kind === 'transfer') {
+                if (step.ion !== 'yb') setIonPosition(tmParticle, tmIonX, step.toY, survivingTmScale);
+                if (step.ion !== 'yb') setTmState(tmParticle, step.toY < 340);
+                if (donor && step.donorToY != null) {
+                    donor.classList.add('is-energy-transfer', 'is-excited');
+                    if (!singleTmMode && step.donorFromY != null) setInteraction(step, donor);
+                    setIonPosition(donor, Number(donor.dataset.groundX), step.donorToY);
+                    setYbState(donor, false);
+                }
+            } else if (step.ion !== 'yb') {
+                setIonPosition(tmParticle, tmIonX, step.toY, tmScale);
+                setTmState(tmParticle, step.toY < 340);
+            } else {
+                setIonPosition(donor, Number(donor?.dataset.groundX), step.toY);
+                setYbState(donor, step.toY < 340);
+            }
+            if (step.partnerToY != null) setIonPosition(partnerParticle, tmIonX + 25, step.partnerToY);
+            if (step.kind === 'emit') {
+                if (photon) photon.setAttribute('y', String(step.toY - 8));
+                if (step.emissionRate) {
+                    radiativeTransitions.find(path => path.dataset.rateLabel.startsWith(step.emissionRate))?.classList.add('is-emitting');
+                }
+            }
+            status.textContent = `${step.title} · step ${index + 1} of ${simulationSteps.length}`;
+        };
+        let activeIndex = 0;
+        overlay?.classList.add('is-active');
+        ybParticles.forEach(particle => {
+            setIonPosition(particle, Number(particle.dataset.groundX), 340);
+            setYbState(particle, false);
+        });
+        setIonPosition(tmParticle, tmIonX, initialTmY);
+        setTmState(tmParticle, initialTmClass === 'is-excited');
+        setIonPosition(backTransferTmParticle, tmIonX + 24, 340);
+        setTmState(backTransferTmParticle, false);
+        backTransferTmParticle?.setAttribute('visibility', 'hidden');
+        setTmState(partnerParticle, false);
+        partnerParticle?.classList.remove('is-excited');
+        partnerParticle?.classList.add('is-ground');
+        survivingTmScale = 1;
+        partnerParticle?.setAttribute('visibility', 'hidden');
+        photon?.setAttribute('visibility', 'hidden');
+        runStep(activeIndex++);
+        energySimulationTimer = setInterval(() => {
+            if (activeIndex >= simulationSteps.length) {
+                runStep(activeIndex);
+                return;
+            }
+            runStep(activeIndex++);
+        }, 3000);
+    });
+    diagram.querySelector('.energy-run-emission')?.addEventListener('change', event => {
+        const emissionSelect = safeGetElement('emissionSelect');
+        if (!emissionSelect) return;
+        emissionSelect.value = event.target.value;
+        window.updateActivePhysics();
+    });
+}
+
 window.updateActivePhysics = function() {
     const emission = safeGetElement('emissionSelect')?.value;
     if (!emission) return;
-        if (isDownshiftFlow()) {
+    const singleTmMode = isSingleTmMode();
+    const tmPct = parseFloat(safeGetElement('dopingTmInput')?.value || '0') || 0;
+    const ybPct = parseFloat(safeGetElement('dopingYbInput')?.value || '0') || 0;
+    updateEnergyDiagram(
+        tmPct,
+        ybPct,
+        String(emission),
+        singleTmMode,
+        Boolean(emission)
+    );
+    const odeElement = safeGetElement('math-ode');
+    if (typeof MathJax !== 'undefined' && odeElement && MathJax.typesetClear) {
+        MathJax.typesetClear([odeElement]);
+    }
+    if (singleTmMode) {
         updateSingleTmContext();
         const excSel = resolveSingleTmExcitation();
         const lvlSel = SINGLE_TM_EMISSION_LEVEL[emission];
@@ -2455,20 +3397,52 @@ window.updateActivePhysics = function() {
         safeSetText('math-ode', stSel ? '$$' + stSel.latex + '$$' : '$$\\text{Emission not populated by this excitation}$$');
         safeSetHtml('pop-logic', stSel ? stSel.population.map(t => '• ' + t).join('<br>') : '');
         safeSetHtml('depop-logic', stSel ? stSel.depopulation.map(t => '• ' + t).join('<br>') : '');
-        if (typeof MathJax !== 'undefined') MathJax.typesetPromise([safeGetElement('math-ode')]).catch(err => console.log('MathJax error:', err));
+        typesetActiveOde();
         return;
     }
     const odeData = odeDatabase[emission];
     if (!odeData) return;
-    
-    safeSetText('math-ode', '$$' + odeData.latex + '$$');
-    safeSetHtml('pop-logic', odeData.population.map(t => '• ' + t).join('<br>'));
-    safeSetHtml('depop-logic', odeData.depopulation.map(t => '• ' + t).join('<br>'));
-    
-    if (typeof MathJax !== 'undefined') {
-        MathJax.typesetPromise([safeGetElement('math-ode')]).catch(err => console.log('MathJax error:', err));
+
+    let activeOdeData = odeData;
+    if (String(emission) === '775') {
+        const population = [...odeData.population];
+        const depopulation = [...odeData.depopulation];
+        const positiveTerms = ["k_{35} \\cdot Tm_3"];
+        const negativeTerms = ["A_{50} \\cdot Tm_5", "W_3 \\cdot Yb_e \\cdot Tm_5"];
+        let tm3Equation = "\\frac{dTm_3}{dt} &= W_2 \\cdot Yb_e \\cdot Tm_1 - k_{35} \\cdot Tm_3";
+        population.unshift("W₂ · Ybₑ · Tm₁ feeds Tm₃ (³F₂,₃); k₃₅ transfers Tm₃ into Tm₅ (³H₄)");
+        if (tmPct > 0.1) {
+            positiveTerms.push("W_{cr,G4} \\cdot Tm_6 \\cdot Tm_0");
+            population.push("Wcr,G4 · Tm₆ · Tm₀ (¹G₄ cross-relaxation; Tm > 0.1 mol%)");
+        }
+        if (tmPct > 1.0) {
+            negativeTerms.push("W_{cr,H4} \\cdot Tm_5 \\cdot Tm_0");
+            depopulation.push("Wcr,H4 · Tm₅ · Tm₀ (³H₄ cross-relaxation; Tm > 1.0 mol%)");
+        }
+        if (ybPct > 10.0) {
+            negativeTerms.push("W_b \\cdot Tm_5 \\cdot Yb_g");
+            depopulation.push("Wb · Tm₅ · Yb_g (back transfer; Yb > 10 mol%)");
+        }
+        const latex = "\\begin{aligned}" + tm3Equation +
+            " \\\\ \\frac{dTm_5}{dt} &= " + positiveTerms.join(" + ") +
+            " \\\\ &\\quad" + negativeTerms.map(term => " - " + term).join("") +
+            "\\end{aligned}";
+        activeOdeData = { latex, population, depopulation };
     }
+
+    safeSetText('math-ode', '$$' + activeOdeData.latex + '$$');
+    safeSetHtml('pop-logic', activeOdeData.population.map(t => '• ' + t).join('<br>'));
+    safeSetHtml('depop-logic', activeOdeData.depopulation.map(t => '• ' + t).join('<br>'));
+
+    typesetActiveOde();
 };
+
+function typesetActiveOde() {
+    const equation = safeGetElement('math-ode');
+    if (typeof MathJax === 'undefined' || !equation) return;
+    MathJax.typesetPromise([equation])
+        .catch(err => console.log('MathJax error:', err));
+}
 
 window.updateExcitationEnergy = function() {
     const wavelengthInput = safeGetElement('excitationWavelength');
@@ -2679,7 +3653,7 @@ function buildMultiChannelFitSequence(slotState = multiChannelSlotState) {
             if (!item?.data || !item.emission || !singleTmReachable(excSel, item.emission)) return;
             if (seq.some(s => s.emission === item.emission)) return;
             seq.push({ emission: item.emission, slotId, fileName: item.fileName, data: item.data,
-                       sourceEmission: item.emission, usedFallbackSource: false });
+                       sourceEmission: item.emission });
         });
         seq.sort((a, b) => SINGLE_TM_CASCADE.indexOf(SINGLE_TM_EMISSION_LEVEL[a.emission])
                          - SINGLE_TM_CASCADE.indexOf(SINGLE_TM_EMISSION_LEVEL[b.emission]));
@@ -2693,10 +3667,11 @@ function buildMultiChannelFitSequence(slotState = multiChannelSlotState) {
         }
     });
 
-    const fallbackSourceByTarget = {
-        '362': '477',
-        '345': '362',
-    };
+    const supportedEmissions = new Set(MULTI_CHANNEL_ORDER);
+    const unsupportedEmissions = Object.keys(emissionToSlot).filter(emission => !supportedEmissions.has(emission));
+    if (unsupportedEmissions.length) {
+        showStatus('warning', `No co-doped ODE fit is available for ${unsupportedEmissions.join(', ')} nm; those traces will be skipped.`);
+    }
 
     const sequence = [];
     for (const emission of MULTI_CHANNEL_ORDER) {
@@ -2706,33 +3681,18 @@ function buildMultiChannelFitSequence(slotState = multiChannelSlotState) {
                 emission,
                 slotId: entry.slotId,
                 fileName: entry.fileName,
+                displayName: entry.displayName || entry.fileName,
                 data: entry.data,
                 sourceEmission: emission,
-                usedFallbackSource: false,
             });
-            continue;
         }
+    }
 
-        const fallbackSource = fallbackSourceByTarget[emission];
-        const fallbackEntry = fallbackSource ? emissionToSlot[fallbackSource] : null;
-        if (fallbackEntry) {
-            sequence.push({
-                emission,
-                slotId: fallbackEntry.slotId,
-                fileName: `${fallbackEntry.fileName} (proxy ${fallbackSource}→${emission})`,
-                data: fallbackEntry.data,
-                sourceEmission: fallbackSource,
-                usedFallbackSource: true,
-            });
-            continue;
-        }
-
-        if (MULTI_CHANNEL_MANDATORY.has(emission)) {
-            if (!sequence.length && emission === '775') {
-                throw new Error('Multi-channel mode requires a 775 nm file to start the sequence.');
-            }
-            break;
-        }
+    if (!sequence.length) {
+        const detail = unsupportedEmissions.length
+            ? ` No co-doped ODE fit is available for ${unsupportedEmissions.join(', ')} nm.`
+            : '';
+        throw new Error(`Upload at least one supported emission file before fitting.${detail}`);
     }
 
     return sequence;
@@ -2794,6 +3754,7 @@ const SINGLE_TM_EMISSION_LEVEL = {'346':'I6','345':'I6','362':'D2','454':'D2','4
 const SINGLE_TM_CASCADE = ['P2','I6','D2','G4','H4','F4'];
 const SINGLE_TM_LEVEL_LABEL = {P2:'³P₂', I6:'¹I₆', D2:'¹D₂', G4:'¹G₄', H4:'³H₄', F4:'³F₄'};
 const SINGLE_TM_TMKEY = {P2:'Tm8', I6:'Tm7', D2:'Tm6', G4:'Tm5', H4:'Tm3', F4:'Tm1'};
+const SINGLE_TM_STATE_LABEL = {Tm0:'Tm₀', Tm1:'Tm₁', Tm3:'Tm₃', Tm5:'Tm₅', Tm6:'Tm₆', Tm7:'Tm₇', Tm8:'Tm₈'};
 const SINGLE_TM_EXTRA_EMISSIONS = [
   { value: '454', label: '454 nm - ¹D₂ → ³F₄' },
   { value: '346', label: '346 nm - ¹I₆ → ³F₄' },
@@ -2849,10 +3810,14 @@ function resolveSingleTmExcitation() {
 }
 
 function singleTmReachable(exc, emission) {
+  if (!singleTmCascadeReachable(exc, emission)) return false;
+  const allowed = SINGLE_TM_ALLOWED_EMISSIONS[exc.key];
+  return !allowed || allowed.includes(String(emission));
+}
+
+function singleTmCascadeReachable(exc, emission) {
   const lvl = SINGLE_TM_EMISSION_LEVEL[String(emission)];
   if (!exc || !lvl) return false;
-  const allowed = SINGLE_TM_ALLOWED_EMISSIONS[exc.key];
-  if (allowed && !allowed.includes(String(emission))) return false;
   const top = Math.min(SINGLE_TM_CASCADE.indexOf(exc.entry),
                        exc.esa ? SINGLE_TM_CASCADE.indexOf(exc.esa) : 99);
   return SINGLE_TM_CASCADE.indexOf(lvl) >= top;
@@ -2867,11 +3832,31 @@ function collectSingleTmPriors() {
   return out;
 }
 
+function singleTmImplementedEquation(stateKey, excitation, ybPct) {
+  const pumpEntry = SINGLE_TM_TMKEY[excitation.entry];
+  const esaEntry = excitation.esa ? SINGLE_TM_TMKEY[excitation.esa] : null;
+  const pump = stateKey === pumpEntry ? ' + G(t) \\cdot Tm_0' : '';
+  const esaIn = stateKey === esaEntry ? ' + G_2 \\cdot Tm_3' : '';
+  const esaOut = esaEntry && stateKey === 'Tm3' ? ' - G_2 \\cdot Tm_3' : '';
+  const ybLoss = ybPct > 0 ? ' + K_{yb} [Yb]' : '';
+  const ybGroundReturn = ybPct > 0 ? ' + K_{yb} [Yb](Tm_3 + Tm_5)' : '';
+  const equations = {
+    Tm0: `\\frac{dTm_0}{dt} = A_{10}Tm_1 + A_{30}Tm_3 + A_{50}Tm_5 + A_{60}Tm_6 + A_{70}Tm_7${ybGroundReturn} - r_1 - r_2 - G(t)Tm_0`,
+    Tm1: '\\frac{dTm_1}{dt} = A_{31}Tm_3 + A_{51}Tm_5 + A_{61}Tm_6 + A_{71}Tm_7 - A_{10}Tm_1 + 2r_1 + r_2',
+    Tm3: `\\frac{dTm_3}{dt} = A_{53}Tm_5 + A_{63}Tm_6 - (A_{30} + A_{31}${ybLoss})Tm_3 - r_1${pump}${esaOut}`,
+    Tm5: `\\frac{dTm_5}{dt} = W_{65}Tm_6 - (A_{50} + A_{51} + A_{53}${ybLoss})Tm_5 + r_2${pump}${esaIn}`,
+    Tm6: `\\frac{dTm_6}{dt} = W_{76}Tm_7 - (A_{60} + A_{61} + A_{63} + W_{65})Tm_6 - r_2${pump}${esaIn}`,
+    Tm7: '\\frac{dTm_7}{dt} = W_{87}Tm_8 - (A_{70} + A_{71} + W_{76})Tm_7',
+    Tm8: `\\frac{dTm_8}{dt} = -W_{87}Tm_8${pump}`
+  };
+  return equations[stateKey] || null;
+}
+
 // Extra fields merged into the /fit payload. Returns {} outside single-doped mode (ETUC payload unchanged).
 function singleTmPayloadExtras(transferEnabled) {
   if (!isDownshiftFlow()) return {};
   return {
-    doping_yb: isSingleTmMode() ? 0 : (parseFloat(document.getElementById('dopingYbInput')?.value) || 0),
+    doping_yb: parseFloat(document.getElementById('dopingYbInput')?.value) || 0,
     single_tm_prior: collectSingleTmPriors(),
     single_tm_lock_G: transferEnabled ? (window.singleTmCarry?.G ?? null) : null,
   };
@@ -2901,12 +3886,13 @@ window.updateSingleTmContext = function() {
     el.innerHTML = '<span style="color:#b91c1c;">Excitation not supported (±10 nm of 260, 356, 466, 690, 785 or 1210 nm). For 980 nm Yb-sensitised data switch Material Model to Co-doped Yb/Tm.</span>';
     return;
   }
+  const entryKey = SINGLE_TM_TMKEY[exc.entry];
   const emission = emSel?.value;
   const bad = emission && !singleTmReachable(exc, emission);
-  el.innerHTML = `Excitation <b>${exc.key} nm</b> enters <b>${SINGLE_TM_LEVEL_LABEL[exc.entry]}</b>`
+  el.innerHTML = `Excitation <b>${exc.key} nm</b> enters <b>${SINGLE_TM_STATE_LABEL[entryKey]} (${SINGLE_TM_LEVEL_LABEL[exc.entry]})</b>`
     + (exc.esa ? ` (ESA → ${SINGLE_TM_LEVEL_LABEL[exc.esa]})` : '')
     + ` | Tm <b>${tm}</b> mol%`
-    + (isSingleTmMode() ? '' : ` | Yb <b>${yb > 0 ? yb + ' mol% (Tm→Yb loss fitted)' : '0'}</b>`)
+    + ` | Yb <b>${yb > 0 ? yb + ' mol% (effective Tm→Yb loss)' : '0 (none)'}</b>`
     + (bad ? '<br><span style="color:#b91c1c;">Selected emission is not populated by this excitation.</span>' : '');
 };
 
@@ -2925,7 +3911,8 @@ window.updateSingleTmOdeDisplay = function() {
       : '<span style="color:#475569;font-size:10px;">Select an excitation for a file to show its ODE set.</span>';
     return;
   }
-  let html = `<div style="font-size:10px;font-weight:700;color:#4338ca;margin-bottom:4px;">${db.excitation_label}</div>`
+  let html = `<div style="position:sticky;top:0;z-index:1;padding:4px 0 6px;background:#fff;font-size:10px;font-weight:700;color:#4338ca;margin-bottom:4px;">Direct-Tm ODE · Tm₃ = ³H₄ · direct-model state labels</div>`
+    + `<div style="font-size:10px;font-weight:700;color:#4338ca;margin-bottom:4px;">${db.excitation_label}</div>`
     + `<div style="font-size:9px;color:#475569;margin-bottom:6px;line-height:1.3;">${db.description}</div>`;
   // Only levels from the excitation entry down to the emitting level shape the measured trace; the rest are collapsed.
   const emNm = String(window.singleTmActiveEmission || document.getElementById('emissionSelect')?.value || '');
@@ -2934,24 +3921,39 @@ window.updateSingleTmOdeDisplay = function() {
   const top = Math.min(casc.indexOf(exc.entry), exc.esa ? casc.indexOf(exc.esa) : 99);
   const relKeys = new Set();
   if (emLvl) casc.forEach((l, i) => { if (i >= top && i <= casc.indexOf(emLvl)) relKeys.add(SINGLE_TM_TMKEY[l]); });
-  const card = (key, st) => `<div style="margin-bottom:5px;padding:4px 6px;background:#f8fafc;border-radius:3px;">
-      <div style="font-size:9px;font-weight:600;color:#1e293b;">${key} — ${st.label}</div>
-      <div style="font-size:12px;">\\(${st.latex}\\)</div>
+  const ybPct = parseFloat(document.getElementById('dopingYbInput')?.value || '0') || 0;
+  const tmPct = parseFloat(document.getElementById('dopingTmInput')?.value || '0') || 0;
+  const stateForDisplay = (key, st) => ({
+    ...st,
+    latex: singleTmImplementedEquation(key, exc, ybPct) || st.latex
+  });
+  const card = (key, st) => `<div style="margin-bottom:5px;padding:5px 7px;background:#f8fafc;border-radius:3px;">
+      <div style="font-size:10px;font-weight:700;color:#1e293b;line-height:1.5;padding-top:2px;">${SINGLE_TM_STATE_LABEL[key] || key} — ${st.label}</div>
+      <div style="font-size:12px;line-height:1.8;padding:2px 0;">\\(${st.latex}\\)</div>
       ${st.observable ? `<div style="font-size:9px;color:#059669;">📍 ${st.observable}</div>` : ''}</div>`;
   const entries = Object.entries(db.states);
   if (relKeys.size) {
     html += `<div style="font-size:9px;color:#059669;margin-bottom:4px;">Pathways that shape the ${emNm} nm trace:</div>`
-      + entries.filter(([k]) => relKeys.has(k)).map(([k, s]) => card(k, s)).join('');
+      + entries.filter(([k]) => relKeys.has(k)).map(([k, s]) => card(k, stateForDisplay(k, s))).join('');
     const rest = entries.filter(([k]) => !relKeys.has(k));
-    if (rest.length) html += `<details style="margin-top:4px;"><summary style="font-size:9px;color:#6b7280;cursor:pointer;">Other levels in the cascade (do not affect this fit)</summary>`
-      + rest.map(([k, s]) => card(k, s)).join('') + '</details>';
+    if (rest.length) html += `<details style="margin-top:4px;"><summary style="font-size:9px;color:#6b7280;cursor:pointer;">Other solved levels (not on the measured emission branch)</summary>`
+      + rest.map(([k, s]) => card(k, stateForDisplay(k, s))).join('') + '</details>';
   } else {
-    html += entries.map(([k, s]) => card(k, s)).join('');
+    html += entries.map(([k, s]) => card(k, stateForDisplay(k, s))).join('');
   }
+  html += `<div style="margin-top:6px;padding-top:5px;border-top:1px solid #e2e8f0;font-size:9px;color:#475569;line-height:1.5;">
+    Direct-Tm ODE numbering: Tm₀=³H₆, Tm₁=³F₄, Tm₃=³H₄, Tm₅=¹G₄, Tm₆=¹D₂, Tm₇=¹I₆, Tm₈=³P₂.
+    These direct-model indices differ from ETUC indices for some levels; the diagram identifies levels by spectroscopic term and energy.
+    r₁=Kcr·[Tm]·Tm₃·Tm₀; r₂=Kcr·[Tm]·Tm₆·Tm₀.${tmPct === 0 ? ' Both cross-relaxation terms are zero at 0% Tm.' : ''}
+    ${ybPct > 0 ? `Kyb·[Yb] is the effective Tm→Yb loss on Tm₃ and Tm₅.` : ''}
+  </div>`;
   eqDiv.innerHTML = html;
+  eqDiv.scrollTop = 0;
   if (emDiv) emDiv.innerHTML = '<strong>Observable emissions:</strong><br>' +
     Object.values(db.states).filter(s => s.observable).map(s => '• ' + s.observable).join('<br>');
-  if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([eqDiv]);
+  if (window.MathJax && MathJax.typesetPromise) {
+    MathJax.typesetPromise([eqDiv]).then(() => { eqDiv.scrollTop = 0; });
+  }
 };
 
 // Single-doped UI. Called from the top of updateLuminescenceFlowUi(); that function's own code is untouched.
@@ -2973,7 +3975,16 @@ function applySingleTmUi() {
   show('genericDecayTiming', false, 'flex');
 
   const ybIn = document.getElementById('dopingYbInput');
-  if (ybIn?.parentElement) ybIn.parentElement.style.display = 'none';   // no Yb in single-doped Tm
+  if (ybIn) {
+    if (ybIn.dataset.originalMin === undefined) ybIn.dataset.originalMin = ybIn.min;
+    ybIn.min = '0';
+    ybIn.placeholder = '0 (optional)';
+    if (ybIn.parentElement) ybIn.parentElement.style.display = '';
+  }
+  const ybRequired = document.getElementById('ybDopingRequiredMark');
+  if (ybRequired) ybRequired.style.display = 'none';
+  const tmHelp = document.getElementById('directTmConcentrationHelp');
+  if (tmHelp) tmHelp.style.display = 'block';
   const exIn = document.getElementById('excitationWavelength');
   if (exIn) { exIn.dataset.origMin = exIn.dataset.origMin || exIn.min; exIn.dataset.origMax = exIn.dataset.origMax || exIn.max; exIn.min = '200'; exIn.max = '1600'; }
 
@@ -2984,7 +3995,7 @@ function applySingleTmUi() {
   if (hint) {
     hint.style.display = 'block';
     hint.style.borderLeftColor = '#10b981'; hint.style.background = '#ecfdf5'; hint.style.color = '#065f46';
-    hint.textContent = 'Single-doped Tm: ODE fit of rise and decay. Excitation, Tm and Yb are read from the Data File and Sample tabs; Yb is optional.';
+    hint.textContent = 'Direct Tm excitation: ODE fit of rise and decay. Yb co-doping is optional; when present, the model includes its effective Tm→Yb loss from ³H₄ and ¹G₄.';
   }
   const fitBtn = document.getElementById('fitDataButton');
   if (fitBtn) fitBtn.textContent = (typeof getActiveUploadMode === 'function' && getActiveUploadMode() === 'multi') ? '⚡ FIT LOADED CHANNELS' : '⚡ FIT DATA';
@@ -3006,6 +4017,17 @@ function leaveSingleTmUi() {
   if (g) g.style.display = 'flex';
   const ybIn = document.getElementById('dopingYbInput');
   if (ybIn?.parentElement) ybIn.parentElement.style.display = '';
+  if (ybIn) {
+    if (ybIn.dataset.originalMin !== undefined) {
+      ybIn.min = ybIn.dataset.originalMin;
+      delete ybIn.dataset.originalMin;
+    }
+    ybIn.placeholder = '10';
+  }
+  const ybRequired = document.getElementById('ybDopingRequiredMark');
+  if (ybRequired) ybRequired.style.display = '';
+  const tmHelp = document.getElementById('directTmConcentrationHelp');
+  if (tmHelp) tmHelp.style.display = 'none';
   const exIn = document.getElementById('excitationWavelength');
   if (exIn) { if (exIn.dataset.origMin) exIn.min = exIn.dataset.origMin; if (exIn.dataset.origMax) exIn.max = exIn.dataset.origMax; }
   const sel = document.getElementById('emissionSelect');
@@ -3193,8 +4215,8 @@ async function runAlternativeLuminescenceFlow(options = {}) {
     const t = result.time_ms || payload.time || [];
     if (Array.isArray(result.fitted_intensity) && Array.isArray(result.measured_intensity)) {
         Plotly.newPlot('fitChart', [
-            { x: t, y: result.measured_intensity, type: 'scatter', mode: 'lines', name: 'Experimental', line: { color: '#3b82f6', width: 2 } },
-            { x: t, y: result.fitted_intensity, type: 'scatter', mode: 'lines', name: 'Flow Fit', line: { color: '#f97316', width: 2 } },
+            { x: t, y: result.measured_intensity, type: 'scatter', mode: 'lines', name: 'Experimental', line: { color: '#64748b', width: 2 } },
+            { x: t, y: result.fitted_intensity, type: 'scatter', mode: 'lines', name: 'Flow Fit', line: { color: EMISSION_TRACE_COLORS[String(selectedEmission)] || '#2563eb', width: 2 } },
         ], {
             title: `${flow.luminescenceType} | ${flow.upconversionMechanism} | R²=${(result.r2 || 0).toFixed(5)}`,
             xaxis: { title: 'Time (ms)' },
@@ -3208,7 +4230,7 @@ async function runAlternativeLuminescenceFlow(options = {}) {
             type: 'scatter',
             mode: 'lines',
             name: `${em} nm`,
-            line: { width: 2 },
+            line: { color: EMISSION_TRACE_COLORS[String(em)] || '#334155', width: 2 },
         }));
         Plotly.newPlot('fitChart', traces, {
             title: `${flow.luminescenceType} | ${flow.upconversionMechanism} | simulated`,
@@ -3250,6 +4272,7 @@ window.applyPhysicsSettings = function() {
 
     const dopingYb = safeGetElement('dopingYbInput')?.value;
     if (materialModel !== 'single_doped_tm' && !dopingYb) missingFields.push('Yb Doping');
+    if (materialModel === 'single_doped_tm' && dopingYb !== '' && !(parseFloat(dopingYb) >= 0)) missingFields.push('Yb Doping must be zero or greater');
     
     const dopingTm = safeGetElement('dopingTmInput')?.value;
     if (!dopingTm) missingFields.push('Tm Doping');
@@ -3385,14 +4408,19 @@ window.applyPhysicsSettings = function() {
         }
         
         // Show success message
-        statusDiv.textContent = `✓ Configuration complete | Model: ${data.model_selected || 'multilevel_ode'} | W_CR: ${data.w_cr_active ? 'Active' : 'Inactive'}`;
+        const activePathways = [
+            data.w_cr_g4_active && 'Wcr,G4',
+            data.w_cr_h4_active && 'Wcr,H4',
+            data.w_b_active && 'Wb',
+        ].filter(Boolean);
+        statusDiv.textContent = `✓ Configuration complete | Model: ${data.model_selected || 'multilevel_ode'} | Active concentration pathways: ${activePathways.join(', ') || 'none'}`;
         statusDiv.style.color = '#4ade80';
         
         // Show model info in console
         console.log(`📊 Model selected: ${data.model_selected}`);
         console.log(`📊 Regime: ${data.regime}`);
         console.log(`📊 W_ET upper bound: ${data.w_et_upper} ms⁻¹`);
-        console.log(`📊 Cross-relaxation: ${data.w_cr_active ? 'Active' : 'Inactive'}`);
+        console.log(`📊 Concentration pathways: ${activePathways.join(', ') || 'none'}`);
         console.log(`📊 Time scale factor: ${data.time_scale_factor}`);
         
         // Reset border colors
@@ -3471,7 +4499,7 @@ window.fitData = async function(options = {}) {
         const sequence = queuedFolders.flatMap(folder => folder.sequence);
 
         if (!sequence.length) {
-            showStatus('error', '✗ No multi-channel files are loaded for the required sequence.');
+            showStatus('error', '✗ No supported multi-channel emission files are loaded.');
             return;
         }
 
@@ -3593,15 +4621,12 @@ window.fitData = async function(options = {}) {
                 if (activeMultiChannelFolderId === item.folderId) {
                     previewMultiChannelSlot(item.slotId);
                 }
-                if (item.usedFallbackSource) {
-                    appendFitLiveLog(`Fallback source engaged: using ${item.sourceEmission} nm data to fit ${item.emission} nm.`);
-                }
-                appendFitLiveLog(`Sequence ${index + 1}/${sequence.length}: ${item.folderName} -> fitting ${item.emission} nm from ${item.fileName}.`);
+                appendFitLiveLog(`Sequence ${index + 1}/${sequence.length}: ${item.folderName} -> fitting ${item.emission} nm from ${item.displayName}.`);
                 const runResult = await window.fitData({
                     internalRun: true,
                     sourceData: item.data,
                     emission: item.emission,
-                    fileName: `${item.folderName} | ${item.fileName}`,
+                    fileName: `${item.folderName} | ${item.emission} nm: ${item.displayName}`,
                     force775Calibration: isFirst775,
                     manageUiBusy: false,
                     showLoading: false,
@@ -4276,7 +5301,8 @@ window.fitData = async function(options = {}) {
                 A71: parseFloat(safeGetElement('lit_A71')?.value || '0.5'),
                 A80: parseFloat(safeGetElement('lit_A80')?.value || '2.0'),
                 A81: parseFloat(safeGetElement('lit_A81')?.value || '2.0'),
-                Wcr: parseFloat(safeGetElement('lit_Wcr')?.value || '5.0'),
+                WcrH4: parseFloat(safeGetElement('lit_WcrH4')?.value || '96.923'),
+                WcrG4: parseFloat(safeGetElement('lit_WcrG4')?.value || '5.0'),
                 Wb: parseFloat(safeGetElement('lit_Wb')?.value || '0.5'),
             },
             excitation_wavelength: parseFloat(safeGetElement('excitationWavelength')?.value || '980'),
@@ -4334,6 +5360,11 @@ window.fitData = async function(options = {}) {
         if (fittingResults.error) {
             throw new Error(fittingResults.error);
         }
+        const diagramFitResult = { ...fittingResults, emission: String(selectedEmission) };
+        window.lastFitResult = diagramFitResult;
+        window.multiChannelResults = window.multiChannelResults || {};
+        window.multiChannelResults[String(selectedEmission)] = diagramFitResult;
+        updateActivePhysics();
 
         const exportTime = processedData ? processedData.time : [];
         lastFitDataForExport = {
@@ -4347,8 +5378,8 @@ window.fitData = async function(options = {}) {
             payload,
             fittingResults
         );
-        const trace1 = { x: time, y: intensity, mode: 'lines', name: 'Experimental', line: { color: '#667eea' } };
-        const trace2 = { x: time, y: fittingResults.fitted_intensity, mode: 'lines', name: 'Fit', line: { color: '#764ba2' } };
+        const trace1 = { x: time, y: intensity, mode: 'lines', name: 'Experimental', line: { color: '#64748b' } };
+        const trace2 = { x: time, y: fittingResults.fitted_intensity, mode: 'lines', name: 'Fit', line: { color: EMISSION_TRACE_COLORS[String(selectedEmission)] || '#2563eb' } };
         Plotly.newPlot('fitChart', [trace1, trace2], {
             title: mainTitle,
             xaxis: { title: 'Time' },
@@ -5409,10 +6440,7 @@ window.setCarryForwardFromSelectedRun = function() {
     renderMultiChannelRows && renderMultiChannelRows();
 };
 
-const SIM_EMISSION_COLORS = {
-    '775': '#e74c3c', '477': '#2980b9', '645': '#e67e22',
-    '362': '#8e44ad', '452': '#1abc9c', '345': '#c0392b'
-};
+const SIM_EMISSION_COLORS = EMISSION_TRACE_COLORS;
 
 window.lastSimForwardBundle = window.lastSimForwardBundle || null;
 window.lastCompositionEstimateBundle = window.lastCompositionEstimateBundle || null;
@@ -5451,22 +6479,39 @@ function buildSweepColor(seriesIdx, emissionKey) {
     return palette[seriesIdx % palette.length];
 }
 
-function renderSimEquationPanel(data, emissions, spacing) {
+function renderSimEquationPanel(data, emissions, spacing, ybPct, tmPct) {
     const panel = safeGetElement('simEquationPanel');
     if (!panel) return;
     const inf = data?.influence_model || {};
     const ems = (emissions || []).join(', ');
+    const pathways = [];
+    if (tmPct > 0.1) pathways.push('Wcr,G4');
+    if (tmPct > 1.0) pathways.push('Wcr,H4');
+    if (ybPct > 10.0) pathways.push('Wb');
+    const crG4Feed = tmPct > 0.1 ? ' + Wcr,G4·Tm6·Tm0' : '';
+    const crH4 = tmPct > 1.0 ? ' - Wcr,H4·Tm5·Tm0' : '';
+    const backTransfer = ybPct > 10.0;
+    const btYb = backTransfer ? ' + Wb·Tm5·Yb_g' : '';
+    const btH4 = backTransfer ? ' - Wb·Tm5·Yb_g' : '';
+    const crG4Ground = tmPct > 0.1 ? ' - Wcr,G4·Tm6·Tm0' : '';
+    const crH4Ground = tmPct > 1.0 ? ' - Wcr,H4·Tm5·Tm0' : '';
+    const crProduct = `${tmPct > 1.0 ? ' + 2·Wcr,H4·Tm5·Tm0' : ''}${tmPct > 0.1 ? ' + Wcr,G4·Tm6·Tm0' : ''}`;
+    const crG4Depop = tmPct > 0.1 ? ' - Wcr,G4·Tm6·Tm0' : '';
     panel.style.display = '';
     panel.innerHTML = `
         <div style="font-weight:700; color:#0f172a; margin-bottom:6px;">Equations used in this simulation (ODE model)</div>
         <div style="font-family:'Courier New',monospace; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:8px;">
-            dYb_e/dt = R_p·Yb_g - A_y·Yb_e - Yb_e·(W1·Tm0 + W2·Tm1 + W3·Tm5 + W4·Tm6 + W5·Tm7) + W_b·Tm5·Yb_g<br>
-            dTm5/dt = W2·Yb_e·Tm1 - A50·Tm5 - Wcr·Tm5·Tm0 - W3·Yb_e·Tm5 - W_b·Tm5·Yb_g<br>
-            dTm6/dt = W3·Yb_e·Tm5 - (A60 + A61)·Tm6 - W4·Yb_e·Tm6<br>
+            dYb_e/dt = R_p·Yb_g - A_y·Yb_e - Yb_e·(W1·Tm0 + W2·Tm1 + W3·Tm5 + W4·Tm6 + W5·Tm7)${btYb}<br>
+            dTm0/dt = A10·Tm1 + A50·Tm5 + A60·Tm6 + A70·Tm7 - W1·Yb_e·Tm0${crH4Ground}${crG4Ground}${backTransfer ? ' + Wb·Tm5·Yb_g' : ''}<br>
+            dTm1/dt = k21·Tm2 + A61·Tm6 + A71·Tm7 + A81·Tm8 - A10·Tm1 - W2·Yb_e·Tm1${crProduct}<br>
+            dTm3/dt = W2·Yb_e·Tm1 - k35·Tm3<br>
+            dTm5/dt = k35·Tm3${crG4Feed} - A50·Tm5 - W3·Yb_e·Tm5${crH4}${btH4}<br>
+            dTm6/dt = W3·Yb_e·Tm5 - (A60 + A61)·Tm6 - W4·Yb_e·Tm6${crG4Depop}<br>
             dTm7/dt = W4·Yb_e·Tm6 - (A70 + A71)·Tm7 - W5·Yb_e·Tm7<br>
             dTm8/dt = W5·Yb_e·Tm7 - A81·Tm8
         </div>
         <div style="font-size:11px; color:#334155; line-height:1.5;">
+            <strong>Active concentration-gated pathways:</strong> ${pathways.join(', ') || 'none'} (Tm=${Number(tmPct || 0).toFixed(3)} mol%, Yb=${Number(ybPct || 0).toFixed(3)} mol%).<br>
             <strong>Observables:</strong> I775∝Tm5, I477∝A60·Tm6, I645∝A61·Tm6, I362/I452∝Tm7, I345∝Tm8.<br>
             <strong>Influence inputs used:</strong> host=${inf.host_material ?? 'N/A'}, anneal=${inf.annealing_c ?? 'N/A'}°C, phonon=${inf.phonon_cm ?? 'N/A'} cm⁻¹, host mole factor=${inf.host_mole_factor ?? 'N/A'} (ref=5).<br>
             <strong>Combined scale factors:</strong> ET=${(inf.combined_et_factor ?? 1).toFixed ? inf.combined_et_factor.toFixed(3) : inf.combined_et_factor}, NR=${(inf.combined_nr_factor ?? 1).toFixed ? inf.combined_nr_factor.toFixed(3) : inf.combined_nr_factor}, RAD=${(inf.combined_rad_factor ?? 1).toFixed ? inf.combined_rad_factor.toFixed(3) : inf.combined_rad_factor}.<br>
@@ -5579,7 +6624,7 @@ window.runForwardSim = function() {
                 margin: { l: 60, r: 30, t: 50, b: 60 }
             }, { responsive: true });
         }
-        renderSimEquationPanel(data, emissions, traceSpacing);
+        renderSimEquationPanel(data, emissions, traceSpacing, yb, tm);
         const tbody = safeGetElement('simMetricsRows');
         if (tbody) tbody.innerHTML = metricsRows.join('');
         const tbl = safeGetElement('simMetricsTable');
@@ -5699,7 +6744,7 @@ window.runCompositionEstimate = function() {
         optimize_kinetics: optimizeKinetics,
         iterative_rounds: parseInt(safeGetElement('estIterRounds')?.value || '2', 10),
         de_maxiter: parseInt(safeGetElement('estDEMaxIter')?.value || '40', 10),
-        kinetics_to_optimize: ['W1', 'W2', 'W3', 'k21', 'k35', 'Wcr', 'Wb', 'A50', 'A60', 'A61'],
+        kinetics_to_optimize: ['W1', 'W2', 'W3', 'k21', 'k35', 'WcrH4', 'WcrG4', 'Wb', 'A50', 'A60', 'A61'],
         lit_params: (window.lastFitResult && window.lastFitResult.lit_params) ? window.lastFitResult.lit_params : {},
     };
     safeSetText('simEstStatus', optimizeKinetics
@@ -5831,11 +6876,12 @@ window.addEventListener('load', function() {
             smoothValue.textContent = e.target.value;
         });
     }
-    
+
     // Update excitation energy on load
     updateExcitationEnergy();
     ['dopingTmInput', 'dopingYbInput'].forEach(id =>
-        document.getElementById(id)?.addEventListener('input', () => { if (isSingleTmMode()) updateSingleTmContext(); }));
+        document.getElementById(id)?.addEventListener('input', updateActivePhysics));
+    updateActivePhysics();
 });
 
 // ===== Downshifting batch queue (merged from downshift_batch.js) =====
@@ -5923,6 +6969,7 @@ window.addEventListener('load', function() {
     if (!(parseFloat(r.pulse) > 0)) errs.push('pulse width');
     if (!(parseFloat(r.tm) > 0)) errs.push('Tm %');
     if (isCoDoped() && !(parseFloat(r.yb) >= 0 && r.yb !== '')) errs.push('Yb %');
+    if (!isCoDoped() && r.yb !== '' && !(parseFloat(r.yb) >= 0)) errs.push('Yb % must be zero or greater');
     if (!r.host) errs.push('host');
     if (!(parseFloat(r.anneal) >= 0 && r.anneal !== '')) errs.push('annealing');
     return errs;
@@ -5975,7 +7022,7 @@ window.addEventListener('load', function() {
       if (hint) {
         hint.style.display = 'block';
         hint.style.borderLeftColor = '#10b981'; hint.style.background = '#ecfdf5'; hint.style.color = '#065f46';
-        hint.textContent = (isCoDoped() ? 'Co-doped Yb/Tm downshifting' : 'Single-doped Tm downshifting')
+        hint.textContent = (isCoDoped() ? 'Co-doped Yb/Tm downshifting' : 'Direct Tm excitation with optional Yb co-doping')
           + ': Tm ODE fit. Upload any number of files; each file has its own data-file inputs and sample composition.';
       }
     }
@@ -6004,7 +7051,7 @@ window.addEventListener('load', function() {
     if (!host) return;
     const co = isCoDoped();
     const inp = 'padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box;min-width:70px;';
-    const head = ['File', 'Time unit', 'Excitation (nm)', 'Emission', 'Pulse (µs)', 'Optimize pulse width'].concat(co ? ['Yb %'] : [], ['Tm %', 'Host', 'Anneal (°C)', 'Status']);
+    const head = ['File', 'Time unit', 'Excitation (nm)', 'Emission', 'Pulse (µs)', 'Optimize pulse width', co ? 'Yb %' : 'Yb % (optional)', 'Tm %', 'Host', 'Anneal (°C)', 'Status'];
     let html = '<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:12px;width:100%;min-width:1150px;"><thead><tr>'
       + head.map(h => `<th style="text-align:left;padding:4px 6px;border-bottom:2px solid #cbd5e1;color:#374151;white-space:nowrap;">${h}</th>`).join('')
       + '<th></th></tr></thead><tbody>';
@@ -6023,7 +7070,7 @@ window.addEventListener('load', function() {
         <td style="padding:4px 6px;"><select data-f="emission" style="${inp}min-width:170px;">${opt('', ems.length ? 'select' : 'pick excitation', r.emission)}${ems.map(e => opt(e, EM_LABEL[e] || e + ' nm', r.emission)).join('')}</select></td>
         <td style="padding:4px 6px;"><input data-f="pulse" type="number" min="0" step="any" value="${r.pulse}" placeholder="400" style="${inp}width:90px;"></td>
         <td style="padding:4px 6px;text-align:center;"><input data-f="fitPulseWidth" type="checkbox" ${r.fitPulseWidth ? 'checked' : ''} title="Check to let the fitter adjust this pulse width"></td>
-        ${co ? `<td style="padding:4px 6px;"><input data-f="yb" type="number" min="0" step="any" value="${r.yb}" placeholder="10" style="${inp}width:80px;"></td>` : ''}
+        <td style="padding:4px 6px;"><input data-f="yb" type="number" min="0" step="any" value="${r.yb}" placeholder="${co ? '10' : '0'}" style="${inp}width:80px;"></td>
         <td style="padding:4px 6px;"><input data-f="tm" type="number" min="0" step="any" value="${r.tm}" placeholder="0.5" style="${inp}width:80px;"></td>
         <td style="padding:4px 6px;"><select data-f="host" style="${inp}min-width:100px;">${opt('', 'select', r.host)}${HOSTS.map(h => opt(h[0], h[1], r.host)).join('')}</select></td>
         <td style="padding:4px 6px;"><input data-f="anneal" type="number" min="0" step="any" value="${r.anneal}" placeholder="500" style="${inp}width:90px;"></td>
@@ -6033,7 +7080,7 @@ window.addEventListener('load', function() {
     html += '</tbody></table></div>';
     host.innerHTML = rows.length ? html : '<div style="font-size:11px;color:#6b7280;">No files yet. Click “Add files”.</div>';
     const count = $('dsBatchCount'); if (count) count.textContent = `${rows.length} file(s)`;
-    const yb = $('dsBatchModeLabel'); if (yb) yb.textContent = co ? 'Co-doped Yb/Tm' : 'Single-doped Tm';
+    const yb = $('dsBatchModeLabel'); if (yb) yb.textContent = co ? 'Co-doped Yb/Tm' : 'Direct Tm excitation';
     syncOdeView();
   }
 
@@ -6122,7 +7169,7 @@ window.addEventListener('load', function() {
     set('timeUnit', r.timeUnit);
     set('pulseWidthUs', r.pulse);
     set('dopingTmInput', r.tm);
-    set('dopingYbInput', isCoDoped() ? r.yb : '0');
+    set('dopingYbInput', r.yb || '0');
     set('hostSelect', r.host);
     set('annealSelect', r.anneal);
     set('excitationWavelength', String(excKey));

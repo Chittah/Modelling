@@ -42,19 +42,21 @@ Each population n_i obeys `dn_i/dt = feed_i − (radiative + non-radiative decay
   - 466 nm → ¹G₄
   - 690 nm → ³H₄, then excited-state absorption (`G2`) to ¹D₂
   - 785 / 1210 nm → ³H₄, then ESA (`G2`) to ¹G₄
-- **Cross-relaxation (`Kcr · Tm%`):**
-  - ³H₄ + ³H₆ → ³F₄ + ³F₄
+- **Concentration-gated cross-relaxation:**
+  - Above 0.1 mol% Tm: ¹G₄ + ³H₆ → ³H₄ + ³F₄ (`KcrG4`), quenching blue ¹G₄ emission and feeding 775 nm ³H₄.
+  - At or above 1.0 mol% Tm: ³H₄ + ³H₆ → 2 ³F₄ (`KcrH4`), quenching the 775 nm channel.
+  - The pre-existing ¹D₂ + ³H₆ → ¹G₄ + ³F₄ channel remains separately fitted as `Kcr`.
   - ¹D₂ + ³H₆ → ¹G₄ + ³F₄
 - **Observables:** 346 nm ∝ ¹I₆·A₇₁; 454 nm ∝ ¹D₂·A₆₁; 645 nm ∝ ¹G₄·A₅₁; 775 nm ∝ ³H₄·A₃₀.
 - **Fitted parameters:** `G` (pump), `G2` (ESA), `T_offset`.
 
 ### Yb co-doping
-Adds one term only: Tm→Yb back-transfer loss `Kyb · Yb%` depopulating ³H₄ and ¹G₄. With Yb = 0
-(single-doped, no Yb input) this term vanishes.
+Tm→Yb back-transfer follows ³H₄ + Yb³⁺(²F₇/₂) → ³H₆ + Yb³⁺(²F₅/₂). It is active only above
+10 mol% Yb; the simplified Tm model does not track excited Yb explicitly.
 
 ### Do the ODEs change between single and co-doped, at 260 nm or any other excitation?
 No. The level scheme, rates, and entry level for every excitation (260, 356, 466, 690, 785, 1210 nm) are identical.
-The only difference is the `Kyb · Yb%` term, which is zero for single-doped samples.
+The Yb transfer term is disabled at or below 10 mol% Yb.
 
 ## Why the ODE panel lists so many decay pathways (even with one emission)
 
@@ -87,14 +89,17 @@ A trace depends only on the levels from the excitation entry level down to the e
 ### 4. What is actually fitted
 The fit does not vary every rate independently. The emitting-level decay channels are lumped into a single observed
 decay scale, and only a handful of parameters are free: the pump rate `G` (and `G2` for stepwise pumping),
-the feeder rates along the path, `Kcr` (only for Tm ≥ 0.3 %), `Kyb` (only if Yb > 0), and `T_offset`.
+the feeder rates along the path, `Kcr`/`KcrG4` (Tm > 0.1 %), `KcrH4` (Tm ≥ 1.0 %),
+`Kyb` (Yb > 10 %), and `T_offset`.
 Pulse width is fixed to the entered value by default in batch mode; if optimization is enabled for that row,
 it is fitted within ±30 % of the entered value and a wider rescue search may run when the fit is very poor.
 That is roughly 4–6 fitted parameters, not one per pathway shown, plus pulse width when enabled.
 
 ### 5. Where the extra pathways can matter
-- Cross-relaxation (`Kcr · Tm%`) at higher Tm concentration shortens ³H₄ and ¹D₂ and so changes the 775 / 454 nm traces.
-- Yb co-doping (`Kyb · Yb%`) adds one extra loss on ³H₄ and ¹G₄ only, so it does not alter the 346 nm (¹I₆) trace.
+- The `KcrG4 · Tm%` channel at Tm > 0.1 mol%, ¹G₄ + ³H₆ → ³H₄ + ³F₄, feeds the 775 nm emitting state.
+- The separately fitted `KcrH4 · Tm%` channel at Tm ≥ 1.0 mol%, ³H₄ + ³H₆ → 2 ³F₄, drains that state.
+- The legacy ¹D₂ + ³H₆ → ¹G₄ + ³F₄ channel uses `Kcr` at Tm > 0.1 mol%.
+- Yb back-transfer (`Kyb · Yb%`) is gated at Yb > 10 mol% and acts on ³H₄ only in this model.
 
 ### 6. Why fits can still miss, and the slow-tail component
 Rate cascades decay (nearly) exponentially. A slow low-level tail in a measured trace (host or defect afterglow,
@@ -130,8 +135,10 @@ non-radiative (multiphonon) rate i → j. The matching populations are Tm8, Tm7,
 | W₈₇ | ³P₂ → ¹I₆ (multiphonon) | fast feed into ¹I₆ | 500 |
 | W₇₆ | ¹I₆ → ¹D₂ (multiphonon) | ¹I₆ loss / ¹D₂ feed | 1.0 |
 | W₆₅ | ¹D₂ → ¹G₄ (multiphonon) | ¹D₂ loss / ¹G₄ feed | 0.5 |
-| Kcr | cross-relaxation × Tm % | active for Tm ≥ 0.3 % | 2.0 |
-| Kyb | Tm → Yb loss × Yb % | co-doped only | 0.5 |
+| Kcr | ¹D₂ → ¹G₄ cross-relaxation × Tm % | active for Tm > 0.1 % | 2.0 |
+| KcrH4 | ³H₄ → 2 ³F₄ cross-relaxation × Tm % | active for Tm ≥ 1.0 % | 2.0 |
+| KcrG4 | ¹G₄ → ³H₄ cross-relaxation × Tm % | active for Tm > 0.1 % | 2.0 |
+| Kyb | ³H₄ → Yb back-transfer × Yb % | active for Yb > 10 % | 0.5 |
 
 The values are starting priors (editable in the model panel); the fit adjusts only the ones that influence the
 selected emission.
@@ -184,7 +191,7 @@ Only ³P₂ and ¹I₆ shape the 346 nm trace. Lower levels are filled from ¹I�
 ```
  ³H₄ (3) ◄══ 690 nm (GSA)
    ┄┄ 690 nm (ESA, G2) ┄┄► ¹D₂ (6) → A61 / A60 / A63, W65 → ¹G₄ (5) → …
- ³H₄ + ³H₆ ✕ ³F₄ + ³F₄   (Kcr, high Tm)
+ ³H₄ + ³H₆ ✕ 2 ³F₄   (KcrH4, active at or above 1.0 mol% Tm)
 ```
 
 ### 785 nm and 1210 nm (³H₆ → ³H₄, then ESA to ¹G₄)
@@ -192,12 +199,13 @@ Only ³P₂ and ¹I₆ shape the 346 nm trace. Lower levels are filled from ¹I�
  ³H₄ (3) ◄══ 785 nm (GSA)         (1210 nm: absorbed into ³H₅, relaxes to ³H₄)
    ┄┄ ESA (G2) ┄┄► ¹G₄ (5) ~A51~► 645 nm ; A50 ; A53
  ³H₄ ~~A30~~► ³H₆ (775 nm) ; ~~A31~~► ³F₄ → A10 → ³H₆
- ³H₄ + ³H₆ ✕ ³F₄ + ³F₄   (Kcr, high Tm)
+ ¹G₄ + ³H₆ ──KcrG4, Tm > 0.1%──► ³H₄ + ³F₄ (feeds 775 nm; quenches blue)
+ ³H₄ + ³H₆ ──KcrH4, Tm ≥ 1.0%──► 2 ³F₄ (quenches 775 nm)
 ```
 
 ### Yb co-doping (all excitations)
 ```
- ³H₄ / ¹G₄ (Tm) ──Kyb·Yb%──► Yb ²F₅/₂   (extra loss; absent when Yb = 0)
+ ³H₄ + Yb ²F₇/₂ ──Kyb·Yb%, only when Yb > 10%──► ³H₆ + Yb ²F₅/₂
 ```
 
 ### Upconversion

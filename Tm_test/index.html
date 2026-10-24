@@ -840,8 +840,9 @@
                                     <div><label style="font-size: 9px; color:#6b7280;">A₇₁ – 452 nm (ms⁻¹)</label><input type="number" id="lit_A71" value="0.5" step="0.01" min="0" style="width:100%;padding:5px;border-radius:4px;border:1px solid #d1d5db;font-size:11px;"></div>
                                     <div><label style="font-size: 9px; color:#6b7280;">A₈₀ – ¹I₆→gnd (ms⁻¹)</label><input type="number" id="lit_A80" value="2.0" step="0.1" min="0" style="width:100%;padding:5px;border-radius:4px;border:1px solid #d1d5db;font-size:11px;"></div>
                                     <div><label style="font-size: 9px; color:#6b7280;">A₈₁ – 345 nm (ms⁻¹)</label><input type="number" id="lit_A81" value="2.0" step="0.1" min="0" style="width:100%;padding:5px;border-radius:4px;border:1px solid #d1d5db;font-size:11px;"></div>
-                                    <div><label style="font-size: 9px; color:#6b7280;">Wcr – Cross-relax (ms⁻¹)</label><input type="number" id="lit_Wcr" value="96.923" step="0.1" min="0" style="width:100%;padding:5px;border-radius:4px;border:1px solid #d1d5db;font-size:11px;"></div>
-                                    <div><label style="font-size: 9px; color:#6b7280;">Wb – Back transfer (ms⁻¹)</label><input type="number" id="lit_Wb" value="8.0126" step="0.01" min="0" style="width:100%;padding:5px;border-radius:4px;border:1px solid #d1d5db;font-size:11px;"></div>
+                                    <div><label style="font-size: 9px; color:#6b7280;">Wcr – ³H₄ + ³H₆ CR (Tm ≥ 1.0%)</label><input type="number" id="lit_Wcr" value="96.923" step="0.1" min="0" style="width:100%;padding:5px;border-radius:4px;border:1px solid #d1d5db;font-size:11px;"></div>
+                                    <div><label style="font-size: 9px; color:#6b7280;">WcrG4 – ¹G₄ + ³H₆ CR (Tm &gt; 0.1%)</label><input type="number" id="lit_WcrG4" value="5.0" step="0.1" min="0" style="width:100%;padding:5px;border-radius:4px;border:1px solid #d1d5db;font-size:11px;"></div>
+                                    <div><label style="font-size: 9px; color:#6b7280;">Wb – Tm→Yb BET (Yb &gt; 10%)</label><input type="number" id="lit_Wb" value="8.0126" step="0.01" min="0" style="width:100%;padding:5px;border-radius:4px;border:1px solid #d1d5db;font-size:11px;"></div>
                                 </div>
                             </div>
                         </div>
@@ -1060,7 +1061,7 @@
                                 
                                 <div style="background: #000; padding: 15px; border-radius: 6px; border: 1px solid #444; margin-bottom: 15px;">
                                     <p style="color: #888; font-size: 11px; margin-bottom: 8px;">Solving for Population (N<sub>x</sub>):</p>
-                                    <div id="math-ode" style="font-size: 16px; text-align: center; color: #fff; font-family: 'Courier New', monospace;">
+                                    <div id="math-ode" style="max-width:100%; overflow-x:auto; overflow-y:hidden; white-space:nowrap; font-size:16px; text-align:center; color:#fff; font-family:'Courier New', monospace;">
                                         $$\frac{dN_x}{dt} = \text{Select emission wavelength...}$$
                                     </div>
                                 </div>
@@ -1085,7 +1086,7 @@
                                     <!-- ODE Equation -->
                                     <div style="background: rgba(0,0,0,0.4); padding: 10px; border-radius: 6px; margin-bottom: 10px; border-left: 3px solid #667eea;">
                                         <strong style="color: #a5b4fc; font-size: 12px;">Differential Equation:</strong>
-                                        <div id="odeEquation" style="margin: 6px 0; font-size: 13px; color: #fff; font-weight: bold;">
+                                        <div id="odeEquation" style="max-width:100%; overflow-x:auto; overflow-y:hidden; white-space:nowrap; margin:6px 0; font-size:13px; color:#fff; font-weight:bold;">
                                             dN/dt = ...
                                         </div>
                                         <div id="odeNote" style="font-size: 10px; color: #b0b0b0; line-height: 1.4; margin-top: 4px;">
@@ -1582,7 +1583,7 @@
                                 <li>Large values indicate substantial mismatch; small values may still be important if the fit is sensitive or the data is noisy.</li>
                             </ul>
                             <ul style="margin-bottom:8px;">
-                                <li><b>Proxy fitting for missing channel:</b> If a mandatory channel (e.g., 362 nm) does not have a file or folder, the workflow uses a proxy approach: it fits the available channel (e.g., 477 nm) and attempts to generate a fit for the missing channel using the available data as a proxy. This is indicated by log messages such as <b>proxy 477→362</b>.</li>
+                                <li><b>Optional multi-channel fits:</b> All channels (775, 477, 645, 362, 452, 345 nm) are optional. Any loaded channels run in physical cascade order. If a channel does not have a file loaded, it is skipped.</li>
                                 <li>In proxy fitting, <b>experimental</b> refers to the measured data from the proxy channel (e.g., 477 nm), not the missing channel. All timing metrics, intensity, and error calculations are based on this proxy data.</li>
                                 <li>The proxy fit uses the best available data to estimate parameters for the missing channel. Fit quality and troubleshooting will reflect that a proxy was used, and recommendations may be shown for improving proxy accuracy.</li>
                                 <li>If the proxy fit does not meet solved criteria, retries and fallback logic are applied as usual, but the result is limited by the proxy data. Manual review is recommended for proxy fits.</li>

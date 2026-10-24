@@ -23,13 +23,13 @@ The state vector is
 
 | Variable | Tm³⁺ manifold | Role |
 |---|---|---|
-| \(n_0\) | \(^{3}H_6\) | Ground state |
-| \(n_1\) | \(^{3}F_4\) | Lower metastable state |
-| \(n_3\) | \(^{3}H_4\) | 775 nm emitting state |
-| \(n_5\) | \(^{1}G_4\) | 645 nm and 477 nm emitting state |
-| \(n_6\) | \(^{1}D_2\) | 454 nm and 362 nm emitting state |
-| \(n_7\) | \(^{1}I_6\) | 346 nm emitting state |
-| \(n_8\) | \(^{3}P_2\) | High-lying state populated at 260 nm |
+| \(Tm_0\) | \(^{3}H_6\) | Ground state |
+| \(Tm_1\) | \(^{3}F_4\) | Lower metastable state |
+| \(Tm_3\) | \(^{3}H_4\) | 775 nm emitting state |
+| \(Tm_5\) | \(^{1}G_4\) | 645 nm and 477 nm emitting state |
+| \(Tm_6\) | \(^{1}D_2\) | 454 nm and 362 nm emitting state |
+| \(Tm_7\) | \(^{1}I_6\) | 346 nm emitting state |
+| \(Tm_8\) | \(^{3}P_2\) | High-lying state populated at 260 nm |
 
 The subscripts are the model's labels; they are not a claim that all intervening spectroscopic
 manifolds are explicitly represented. In the ODE solver, the time variable is in milliseconds and
@@ -38,7 +38,7 @@ are numerically in \(\mathrm{ms}^{-1}\). This unit convention follows from passi
 the backend solver. Do not label numerical backend rates as \(\mathrm{s}^{-1}\) without converting
 them by a factor of 1000.
 
-The model initializes \(n_0(0)=1\), with every excited-state population zero. It treats populations
+The model initializes \(Tm_0(0)=1\), with every excited-state population zero. It treats populations
 as normalized fractions and does not fit absolute emitted photon counts.
 
 ## Governing equations
@@ -51,7 +51,7 @@ sides.
 The model defines concentration-scaled cross-relaxation coefficients
 
 \[
-k_{\mathrm{CR}} = K_{\mathrm{cr}}\,c_{\mathrm{Tm}},
+W_{\mathrm{cr}} = K_{\mathrm{cr}}\,c_{\mathrm{Tm}},
 \qquad
 k_{\mathrm{Yb}} = K_{\mathrm{yb}}\,c_{\mathrm{Yb}},
 \]
@@ -60,31 +60,32 @@ where \(c_{\mathrm{Tm}}\) and \(c_{\mathrm{Yb}}\) are the numeric concentrations
 used in the mass-action terms
 
 \[
-r_1 = k_{\mathrm{CR}} n_3 n_0,
+r_1 = W_{\mathrm{cr}} Tm_3 Tm_0,
 \qquad
-r_2 = k_{\mathrm{CR}} n_6 n_0.
+r_2 = W_{\mathrm{cr}} Tm_6 Tm_0.
 \]
 
-The seven equations are
+The pre-extension equations are shown below; the concentration-gated CR and back-transfer
+subsection later in this chapter updates the CR and Yb terms to the current implementation.
 
 \[
 \begin{aligned}
-\frac{dn_0}{dt}={}&
-A_{10}n_1+A_{30}n_3+A_{50}n_5+A_{60}n_6+A_{70}n_7
-+k_{\mathrm{Yb}}(n_3+n_5)-r_1-r_2+u_0(t),\\
-\frac{dn_1}{dt}={}&
-A_{31}n_3+A_{51}n_5+A_{61}n_6+A_{71}n_7-A_{10}n_1
+\frac{dTm_0}{dt}={}&
+A_{10}Tm_1+A_{30}Tm_3+A_{50}Tm_5+A_{60}Tm_6+A_{70}Tm_7
++k_{\mathrm{Yb}}(Tm_3+Tm_5)-r_1-r_2+u_0(t),\\
+\frac{dTm_1}{dt}={}&
+A_{31}Tm_3+A_{51}Tm_5+A_{61}Tm_6+A_{71}Tm_7-A_{10}Tm_1
 +2r_1+r_2+u_1(t),\\
-\frac{dn_3}{dt}={}&
-A_{53}n_5+A_{63}n_6-(A_{30}+A_{31}+k_{\mathrm{Yb}})n_3-r_1+u_3(t),\\
-\frac{dn_5}{dt}={}&
-W_{65}n_6-(A_{50}+A_{51}+A_{53}+k_{\mathrm{Yb}})n_5+r_2+u_5(t),\\
-\frac{dn_6}{dt}={}&
-W_{76}n_7-(A_{60}+A_{61}+A_{63}+W_{65})n_6-r_2+u_6(t),\\
-\frac{dn_7}{dt}={}&
-W_{87}n_8-(A_{70}+A_{71}+W_{76})n_7+u_7(t),\\
-\frac{dn_8}{dt}={}&
--W_{87}n_8+u_8(t).
+\frac{dTm_3}{dt}={}&
+A_{53}Tm_5+A_{63}Tm_6-(A_{30}+A_{31}+k_{\mathrm{Yb}})Tm_3-r_1+u_3(t),\\
+\frac{dTm_5}{dt}={}&
+W_{65}Tm_6-(A_{50}+A_{51}+A_{53}+k_{\mathrm{Yb}})Tm_5+r_2+u_5(t),\\
+\frac{dTm_6}{dt}={}&
+W_{76}Tm_7-(A_{60}+A_{61}+A_{63}+W_{65})Tm_6-r_2+u_6(t),\\
+\frac{dTm_7}{dt}={}&
+W_{87}Tm_8-(A_{70}+A_{71}+W_{76})Tm_7+u_7(t),\\
+\frac{dTm_8}{dt}={}&
+-W_{87}Tm_8+u_8(t).
 \end{aligned}
 \]
 
@@ -97,20 +98,78 @@ terms represent the implemented reactions
 ^{1}D_2+{}^{3}H_6 \longrightarrow {}^{1}G_4+{}^{3}F_4.
 \]
 
-The factors \(2r_1\) and \(r_2\) in \(dn_1/dt\) follow from the product states in these reactions.
+The factors \(2r_1\) and \(r_2\) in \(dTm_1/dt\) follow from the product states in these reactions.
 The current implementation scales these terms linearly with the entered Tm mol% and forms the
 bilinear products from normalized populations. Thus \(K_{\mathrm{cr}}\) is an effective
 concentration-scaled coefficient in this model, not automatically a transferable bimolecular
 constant in physical volume units.
 
-The \(k_{\mathrm{Yb}}\) terms represent donor Tm³⁺ returning to its ground state after transferring
-excitation to Yb³⁺. This optional loss is applied to \(^{3}H_4\) and \(^{1}G_4\) in the implementation;
-it is absent in single-doped fits.
+### Concentration-gated CR and back-transfer extension
+
+The current ODE implementation uses strict concentration thresholds. With \(c_{\mathrm{Tm}}\) and
+\(c_{\mathrm{Yb}}\) as numeric concentrations in mol%, define
+
+\[
+\chi_{\mathrm{G4}}=\mathbf{1}[c_{\mathrm{Tm}}>0.1],\qquad
+\chi_{\mathrm{D2}}=\mathbf{1}[c_{\mathrm{Tm}}>0.1],\qquad
+\chi_{\mathrm{H4}}=\mathbf{1}[c_{\mathrm{Tm}}\ge1.0],\qquad
+\chi_{\mathrm{Yb}}=\mathbf{1}[c_{\mathrm{Yb}}>10.0].
+\]
+
+The cross-relaxation rates (effective \(\mathrm{ms}^{-1}\) on the normalized population products) are
+
+\[
+\begin{aligned}
+r_{\mathrm{H4}}&=\chi_{\mathrm{H4}}K_{\mathrm{cr,H4}}c_{\mathrm{Tm}}\,Tm_3Tm_0,
+&{}^{3}H_4+{}^{3}H_6&\to2\,{}^{3}F_4,\\
+r_{\mathrm{G4}}&=\chi_{\mathrm{G4}}K_{\mathrm{cr,G4}}c_{\mathrm{Tm}}\,Tm_5Tm_0,
+&{}^{1}G_4+{}^{3}H_6&\to{}^{3}H_4+{}^{3}F_4,\\
+r_{\mathrm{D2}}&=\chi_{\mathrm{D2}}K_{\mathrm{cr}}c_{\mathrm{Tm}}\,Tm_6Tm_0,
+&{}^{1}D_2+{}^{3}H_6&\to{}^{1}G_4+{}^{3}F_4.
+\end{aligned}
+\]
+
+Here the state labels are \(Tm_3={}^{3}H_4\), \(Tm_5={}^{1}G_4\), \(Tm_6={}^{1}D_2\),
+and \(Tm_1={}^{3}F_4\). \(K_{\mathrm{cr,G4}}\) and \(K_{\mathrm{cr,H4}}\) are independent
+fitted parameters for the \(^{1}G_4\)-fed 775 nm enhancement and the higher-concentration
+\(^{3}H_4\) quenching pathway. The legacy \(^{1}D_2\) channel retains its own \(K_{\mathrm{cr}}\)
+coefficient. Relative to the seven baseline equations above, the two principal CR additions are
+
+\[
+\begin{aligned}
+\dot{Tm}_0&\mathrel{+}= -r_{\mathrm{G4}}-r_{\mathrm{H4}},&
+\dot{Tm}_1&\mathrel{+}= r_{\mathrm{G4}}+2r_{\mathrm{H4}},\\
+\dot{Tm}_3&\mathrel{+}= r_{\mathrm{G4}}-r_{\mathrm{H4}},&
+\dot{Tm}_5&\mathrel{+}= -r_{\mathrm{G4}},
+\end{aligned}
+\]
+
+and \(r_{\mathrm{D2}}\) remains the existing \(^{1}D_2\) CR rate. Thus
+\(^{1}G_4+{}^{3}H_6\) directly feeds the \(^{3}H_4\) state observed at 775 nm, while the separately
+gated \(^{3}H_4+{}^{3}H_6\to2\,{}^{3}F_4\) channel consumes that state and competes with 775 nm
+emission.
+
+Tm-to-Yb back energy transfer is
+
+\[
+b_{\mathrm{Yb}}=\chi_{\mathrm{Yb}}K_{\mathrm{yb}}c_{\mathrm{Yb}}\,Tm_3,
+\qquad
+{}^{3}H_4+\mathrm{Yb}^{3+}({}^{2}F_{7/2})
+\to{}^{3}H_6+\mathrm{Yb}^{3+}({}^{2}F_{5/2}).
+\]
+
+It contributes \(+b_{\mathrm{Yb}}\) to \(\dot{Tm}_0\) and \(-b_{\mathrm{Yb}}\) to
+\(\dot{Tm}_3\); the excited Yb population is not explicitly represented in the seven-state model.
+This replaces the earlier simplified Yb loss from both \(^{3}H_4\) and \(^{1}G_4\). The pathway is
+zero for \(c_{\mathrm{Yb}}\le10.0\) mol%. Each Tm–Tm CR reaction and this
+back-transfer conserve total tracked Tm population. The concentration-linear scaling is an
+effective model assumption; fitted coefficients should not be interpreted as universal microscopic
+constants without independent validation.
 
 ## Excitation terms
 
 The ground-state pump rate is \(G(t)=G\) while the pulse is on and zero after it ends. Define
-\(p(t)=G(t)n_0(t)\). Its contribution is \(-p(t)\) in \(dn_0/dt\) and \(+p(t)\) in the excited
+\(p(t)=G(t)Tm_0(t)\). Its contribution is \(-p(t)\) in \(dTm_0/dt\) and \(+p(t)\) in the excited
 state shown below. In explicit notation:
 
 \[
@@ -124,24 +183,24 @@ photon flux.
 
 | Nominal excitation | Backend entry state | Additional excited-state absorption (ESA) while pulse is on |
 |---|---|---|
-| 260 nm | \(^{3}P_2\) (\(n_8\)) | None |
-| 356 nm | \(^{1}D_2\) (\(n_6\)) | None |
-| 466 nm | \(^{1}G_4\) (\(n_5\)) | None |
-| 690 nm | \(^{3}H_4\) (\(n_3\)) | \(^{3}H_4\to{}^{1}D_2\) |
-| 785 nm | \(^{3}H_4\) (\(n_3\)) | \(^{3}H_4\to{}^{1}G_4\) |
-| 1210 nm | \(^{3}H_4\) (\(n_3\)) | \(^{3}H_4\to{}^{1}G_4\) |
+| 260 nm | \(^{3}P_2\) (\(Tm_8\)) | None |
+| 356 nm | \(^{1}D_2\) (\(Tm_6\)) | None |
+| 466 nm | \(^{1}G_4\) (\(Tm_5\)) | None |
+| 690 nm | \(^{3}H_4\) (\(Tm_3\)) | \(^{3}H_4\to{}^{1}D_2\) |
+| 785 nm | \(^{3}H_4\) (\(Tm_3\)) | \(^{3}H_4\to{}^{1}G_4\) |
+| 1210 nm | \(^{3}H_4\) (\(Tm_3\)) | \(^{3}H_4\to{}^{1}G_4\) |
 
 For stepwise excitation, the ESA flux is
 
 \[
 f_{\mathrm{ESA}}(t)=
 \begin{cases}
-G_2 n_3(t),&0\leq t\leq t_p,\\
+G_2 Tm_3(t),&0\leq t\leq t_p,\\
 0,&t>t_p,
 \end{cases}
 \]
 
-and is subtracted from \(dn_3/dt\) and added to \(dn_6/dt\) for 690 nm, or to \(dn_5/dt\) for
+and is subtracted from \(dTm_3/dt\) and added to \(dTm_6/dt\) for 690 nm, or to \(dTm_5/dt\) for
 785/1210 nm. \(G_2\) is an effective ESA rate, not a separately measured cross-section.
 
 **Important implementation limitation:** although some UI descriptions discuss intermediate
@@ -154,6 +213,63 @@ The pulse duration is optimized around the user-entered value (normally ±30%). 
 is exceptionally poor, an additional pulse-width rescue can test a broader, shorter range. The
 fitted time offset shifts the trace relative to the model's time origin.
 
+## Emission mechanism and the reasoning behind each equation
+
+Level energies below are approximate and are shown for orientation only; the model uses rates, not
+energies.
+
+```
+ ~10³ cm⁻¹
+  38  ─ ³P₂  (Tm₈) ◄══ 260 nm pump (G)
+          ┆ W₈₇  (multiphonon, fastest step)
+  35  ─ ¹I₆  (Tm₇) ──A₇₁──► ³F₄   346 nm      (also A₇₀ ──► ³H₆)
+          ┆ W₇₆
+  28  ─ ¹D₂  (Tm₆) ◄══ 356 nm pump (G)
+          │  A₆₁ ──► ³F₄  454 nm,   A₆₀ ──► ³H₆  362 nm,   A₆₃ ──► ³H₄
+          ┆ W₆₅
+  21  ─ ¹G₄  (Tm₅) ◄══ 466 nm pump (G)
+          │  A₅₁ ──► ³F₄  645 nm,   A₅₀ ──► ³H₆  477 nm,   A₅₃ ──► ³H₄
+  12.6─ ³H₄  (Tm₃) ◄══ 690 / 785 / 1210 nm entry (G)
+          │  A₃₀ ──► ³H₆  775 nm,   A₃₁ ──► ³F₄
+          │  ESA (G₂): ³H₄ ═► ¹D₂ (690 nm)  or  ³H₄ ═► ¹G₄ (785, 1210 nm)
+  5.6 ─ ³F₄  (Tm₁) ──A₁₀──► ³H₆  1800 nm
+   0  ─ ³H₆  (Tm₀)  ground state
+
+ ┆ = non-radiative (W)    │ / ──► = radiative (A)    ═► = pump or ESA
+
+ Cross-relaxation:
+   Tm > 0.1%: ¹G₄ + ³H₆ ──r_G4──► ³H₄ + ³F₄   (blue quenching; 775 nm enhancement)
+   Tm ≥ 1.0%: ³H₄ + ³H₆ ──r_H4──► 2 ³F₄       (quenches the enhanced 775 nm channel)
+   Tm > 0.1%: ¹D₂ + ³H₆ ──r_D2──► ¹G₄ + ³F₄   (existing model pathway)
+ Yb back-transfer (enabled above 10 mol% Yb):
+   ³H₄ + Yb³⁺(²F₇/₂) ──b_Yb──► ³H₆ + Yb³⁺(²F₅/₂)
+```
+
+Each level equation follows one rule: the right-hand side lists what feeds the level (gains) and every
+way it can empty (losses). The measured trace for an emission is the emitting level's population
+multiplied by that transition's radiative rate.
+
+| Level | Gains | Losses | Reason |
+|---|---|---|---|
+| ³P₂ (Tm₈) | pump (260 nm only) | W₈₇ | No radiative channel is included. It empties into ¹I₆ by multiphonon decay, and W₈₇ is the largest rate. |
+| ¹I₆ (Tm₇) | W₈₇·Tm₈ | A₇₀, A₇₁, W₇₆ | A₇₁ is the 346 nm emission. W₇₆ passes population down to ¹D₂. |
+| ¹D₂ (Tm₆) | W₇₆·Tm₇, pump (356 nm) | A₆₀, A₆₁, A₆₃, W₆₅, r₂ | 362 nm (A₆₀) and 454 nm (A₆₁) are emitted here. A₆₃ feeds ³H₄ and W₆₅ feeds ¹G₄. |
+| ¹G₄ (Tm₅) | W₆₅·Tm₆, r_D2, pump (466 nm) | A₅₀, A₅₁, A₅₃, r_G4 | r_G4 transfers population onward to ³H₄ + ³F₄. |
+| ³H₄ (Tm₃) | A₅₃·Tm₅, A₆₃·Tm₆, r_G4, pump (690, 785, 1210 nm) | A₃₀, A₃₁, b_Yb, r_H4, G₂ (ESA) | 775 nm (A₃₀) is emitted here. |
+| ³F₄ (Tm₁) | A₃₁·Tm₃, A₅₁·Tm₅, A₆₁·Tm₆, A₇₁·Tm₇, 2r_H4 + r_G4 + r_D2 | A₁₀ | It collects decay from levels above it and both CR product channels. |
+| ³H₆ (Tm₀) | radiative returns A₁₀…A₇₀, b_Yb | r_H4, r_G4, r_D2, G·Tm₀ | CR consumes a ground-state ion; back-transfer restores one. |
+
+Multiphonon steps (W) hand population to the next level and never return it to the ground state, so the
+sum of all populations stays constant.
+
+Cross-relaxation terms are bilinear products of excited- and ground-state populations. The
+\(^{1}G_4\) and \(^{1}D_2\) channels activate above 0.1 mol% Tm; the separate \(^{3}H_4\) channel
+activates at or above 1.0 mol% Tm. Each is scaled linearly with entered Tm mol%. Yb back-transfer
+activates only above 10 mol% Yb.
+
+The pump \(G\,Tm_0\) is a rectangular pulse of width \(t_p\). It is not computed from a cross-section
+and a photon flux, so \(G\) and \(G_2\) are effective rates.
+
 ## Parameter definitions
 
 Here \(A_{ij}\) denotes the first-order radiative decay rate from the upper state whose label is
@@ -165,22 +281,24 @@ asserted to be sample-specific measured constants.
 |---|---|---:|---|
 | \(G\) | Pump from \(^{3}H_6\) | 20.0 | Effective ground-state excitation rate during the pulse; destination depends on excitation wavelength. |
 | \(G_2\) | ESA from \(^{3}H_4\) | 1.0 | Effective second-step excitation rate during the pulse for 690, 785, and 1210 nm cases. |
-| \(A_{10}\) | \(^{3}F_4\to{}^{3}H_6\) | 0.12 | Radiative depopulation of \(n_1\); associated modeled signal at 1800 nm. |
-| \(A_{30}\) | \(^{3}H_4\to{}^{3}H_6\) | 0.35 | Radiative branch from \(n_3\); associated modeled signal at 775 nm. |
-| \(A_{31}\) | \(^{3}H_4\to{}^{3}F_4\) | 0.25 | Radiative branch from \(n_3\) into \(n_1\). |
-| \(A_{50}\) | \(^{1}G_4\to{}^{3}H_6\) | 0.6 | Radiative branch from \(n_5\), associated in the model with 477 nm. |
-| \(A_{51}\) | \(^{1}G_4\to{}^{3}F_4\) | 0.5 | Radiative branch from \(n_5\), associated with 645 nm. |
-| \(A_{53}\) | \(^{1}G_4\to{}^{3}H_4\) | 0.05 | Radiative feeding of the 775 nm emitting state \(n_3\). |
-| \(A_{60}\) | \(^{1}D_2\to{}^{3}H_6\) | 1.0 | Radiative branch from \(n_6\), associated with 362 nm. |
-| \(A_{61}\) | \(^{1}D_2\to{}^{3}F_4\) | 3.0 | Radiative branch from \(n_6\), associated with 454 nm. |
-| \(A_{63}\) | \(^{1}D_2\to{}^{3}H_4\) | 0.3 | Radiative feeding of \(n_3\) from \(n_6\). |
-| \(A_{70}\) | \(^{1}I_6\to{}^{3}H_6\) | 3.0 | Radiative branch from \(n_7\). |
-| \(A_{71}\) | \(^{1}I_6\to{}^{3}F_4\) | 4.0 | Radiative branch from \(n_7\), associated with 345/346 nm. |
-| \(W_{87}\) | \(^{3}P_2\to{}^{1}I_6\) | 500.0 | Effective non-radiative feed from \(n_8\) to the 346 nm emitting state. |
-| \(W_{76}\) | \(^{1}I_6\to{}^{1}D_2\) | 1.0 | Effective non-radiative feed from \(n_7\) to \(n_6\). |
-| \(W_{65}\) | \(^{1}D_2\to{}^{1}G_4\) | 0.5 | Effective non-radiative feed from \(n_6\) to \(n_5\). |
-| \(K_{\mathrm{cr}}\) | Tm–Tm cross-relaxation coefficient | 2.0 | Multiplied by entered Tm mol% to give the coefficient in \(r_1,r_2\). |
-| \(K_{\mathrm{yb}}\) | Tm-to-Yb transfer coefficient | 0.5 | Multiplied by entered Yb mol%; used only in co-doped mode and set to zero for single-doped Tm. |
+| \(A_{10}\) | \(^{3}F_4\to{}^{3}H_6\) | 0.12 | Radiative depopulation of \(Tm_1\); associated modeled signal at 1800 nm. |
+| \(A_{30}\) | \(^{3}H_4\to{}^{3}H_6\) | 0.35 | Radiative branch from \(Tm_3\); associated modeled signal at 775 nm. |
+| \(A_{31}\) | \(^{3}H_4\to{}^{3}F_4\) | 0.25 | Radiative branch from \(Tm_3\) into \(Tm_1\). |
+| \(A_{50}\) | \(^{1}G_4\to{}^{3}H_6\) | 0.6 | Radiative branch from \(Tm_5\), associated in the model with 477 nm. |
+| \(A_{51}\) | \(^{1}G_4\to{}^{3}F_4\) | 0.5 | Radiative branch from \(Tm_5\), associated with 645 nm. |
+| \(A_{53}\) | \(^{1}G_4\to{}^{3}H_4\) | 0.05 | Radiative feeding of the 775 nm emitting state \(Tm_3\). |
+| \(A_{60}\) | \(^{1}D_2\to{}^{3}H_6\) | 1.0 | Radiative branch from \(Tm_6\), associated with 362 nm. |
+| \(A_{61}\) | \(^{1}D_2\to{}^{3}F_4\) | 3.0 | Radiative branch from \(Tm_6\), associated with 454 nm. |
+| \(A_{63}\) | \(^{1}D_2\to{}^{3}H_4\) | 0.3 | Radiative feeding of \(Tm_3\) from \(Tm_6\). |
+| \(A_{70}\) | \(^{1}I_6\to{}^{3}H_6\) | 3.0 | Radiative branch from \(Tm_7\). |
+| \(A_{71}\) | \(^{1}I_6\to{}^{3}F_4\) | 4.0 | Radiative branch from \(Tm_7\), associated with 345/346 nm. |
+| \(W_{87}\) | \(^{3}P_2\to{}^{1}I_6\) | 500.0 | Effective non-radiative feed from \(Tm_8\) to the 346 nm emitting state. |
+| \(W_{76}\) | \(^{1}I_6\to{}^{1}D_2\) | 1.0 | Effective non-radiative feed from \(Tm_7\) to \(Tm_6\). |
+| \(W_{65}\) | \(^{1}D_2\to{}^{1}G_4\) | 0.5 | Effective non-radiative feed from \(Tm_6\) to \(Tm_5\). |
+| \(K_{\mathrm{cr}}\) | D₂-to-ground Tm–Tm CR coefficient | 2.0 | Multiplied by Tm mol% for the existing \(^{1}D_2+{}^{3}H_6\) channel; enabled only above 0.1 mol% Tm. |
+| \(K_{\mathrm{cr,H4}}\) | H₄-to-ground Tm–Tm CR coefficient | 2.0 | Separate \(^{3}H_4+{}^{3}H_6\to2\,{}^{3}F_4\) fit; enabled at or above 1.0 mol% Tm. |
+| \(K_{\mathrm{cr,G4}}\) | G₄-to-ground Tm–Tm CR coefficient | 2.0 | Separate \(^{1}G_4+{}^{3}H_6\to{}^{3}H_4+{}^{3}F_4\) fit; enabled only above 0.1 mol% Tm. |
+| \(K_{\mathrm{yb}}\) | Tm-to-Yb back-transfer coefficient | 0.5 | Multiplied by Yb mol%; H₄ back-transfer is enabled only above 10 mol% Yb. |
 | \(T_{\mathrm{offset}}\) | Time-zero shift | 0.0 | Shifts model time relative to measured time; bounded by the fitter. |
 | \(t_p\) | Pulse duration | User input | Rectangular pulse duration, normally fitted within ±30% of the entered pulse. |
 | \(L_{\mathrm{obs}}\) | Observed-level rate scale | 1.0 multiplier | Multiplies all radiative rates for the observed level by one common factor, retaining their branching ratios. This is a fitted log-scale variable. |
@@ -190,7 +308,7 @@ asserted to be sample-specific measured constants.
 For an emission assigned to level \(i\), the backend forms the model signal as
 
 \[
-I_{\mathrm{model}}(t)\propto A_{ij}n_i(t),
+I_{\mathrm{model}}(t)\propto A_{ij}Tm_i(t),
 \]
 
 then convolves that signal with an approximate Gaussian instrument-response kernel and applies a
@@ -198,13 +316,13 @@ fitted multiplicative scale during least-squares evaluation. The implemented emi
 
 | Emission label | Tracked state | Rate used for observable |
 |---|---|---|
-| 345 or 346 nm | \(^{1}I_6\), \(n_7\) | \(A_{71}n_7\) |
-| 362 nm | \(^{1}D_2\), \(n_6\) | \(A_{60}n_6\) |
-| 452 or 454 nm | \(^{1}D_2\), \(n_6\) | \(A_{61}n_6\) |
-| 477 nm | \(^{1}G_4\), \(n_5\) | \(A_{50}n_5\) |
-| 645 nm | \(^{1}G_4\), \(n_5\) | \(A_{51}n_5\) |
-| 775 nm | \(^{3}H_4\), \(n_3\) | \(A_{30}n_3\) |
-| 1800 nm | \(^{3}F_4\), \(n_1\) | \(A_{10}n_1\) |
+| 345 or 346 nm | \(^{1}I_6\), \(Tm_7\) | \(A_{71}Tm_7\) |
+| 362 nm | \(^{1}D_2\), \(Tm_6\) | \(A_{60}Tm_6\) |
+| 452 or 454 nm | \(^{1}D_2\), \(Tm_6\) | \(A_{61}Tm_6\) |
+| 477 nm | \(^{1}G_4\), \(Tm_5\) | \(A_{50}Tm_5\) |
+| 645 nm | \(^{1}G_4\), \(Tm_5\) | \(A_{51}Tm_5\) |
+| 775 nm | \(^{3}H_4\), \(Tm_3\) | \(A_{30}Tm_3\) |
+| 1800 nm | \(^{3}F_4\), \(Tm_1\) | \(A_{10}Tm_1\) |
 
 The code's instrument-response approximation uses a Gaussian width derived from the sample interval
 and pulse duration; it is not a measured instrument response function (IRF). The fitted trace is
@@ -235,6 +353,35 @@ The optimizer uses a weighted residual objective for parameter estimation, then 
 the full fitted trace. Adaptive refinements and tail/pulse rescue steps may follow. R² is a
 goodness-of-fit statistic, not a test that the rate equations are physically unique or correct.
 Parameter confidence intervals and global identifiability are not calculated by this implementation.
+
+## Where Yb enters the model, and why 260 nm and 356 nm traces are not affected
+
+The Yb back-transfer term is \(b_{\mathrm{Yb}}=K_{\mathrm{yb}}c_{\mathrm{Yb}}Tm_3\), enabled only
+when Yb exceeds 10 mol%. It transfers the donor \(^{3}H_4\) ion to \(^{3}H_6\);
+no \(^{1}G_4\) loss is assigned to this reaction. The excited Yb state is not explicitly tracked by
+this seven-state model.
+
+Population in this model flows only downward through the cascade
+\(^{3}P_2\to{}^{1}I_6\to{}^{1}D_2\to{}^{1}G_4\to{}^{3}H_4\to{}^{3}F_4\). Nothing flows back up, so a loss
+at a lower level cannot change the population of a higher level. Consequently:
+
+| Excitation | Emission | Emitting level | Yb term acts on it? |
+|---|---|---|---|
+| 260 nm | 346 nm | \(^{1}I_6\) (\(Tm_7\)) | No |
+| 356 nm | 454 nm | \(^{1}D_2\) (\(Tm_6\)) | No |
+| 356 nm | 775 nm | \(^{3}H_4\) (\(Tm_3\)) | Yes |
+| 466 nm | 645 nm | \(^{1}G_4\) (\(Tm_5\)) | Yes |
+
+For the 260 nm / 346 nm and 356 nm / 454 nm traces the fitted curve is therefore identical with and
+without Yb. In the fit, \(K_{\mathrm{yb}}\) is still listed as free whenever Yb > 0, but for these
+traces the data cannot constrain it and it stays near its starting value. Cross-relaxation
+(\(W_{\mathrm{cr}}\)) is independent of Yb and does act on \(^{3}H_4\) and \(^{1}D_2\).
+
+This is a property of how the model is built, not a measured result. Real Yb\(^{3+}\) can couple to
+higher Tm\(^{3+}\) levels, and Yb\(^{3+}\) has no resonant absorption at 260 nm, so any Yb effect on
+the 346 nm or 454 nm decay would have to arise from energy transfer from Tm\(^{3+}\), which this model
+does not include. If Yb changes those decays experimentally, a Yb loss term would have to be added to
+\(^{1}I_6\) and \(^{1}D_2\) in the model.
 
 ## Assumptions and limitations to state in a publication
 

@@ -8,7 +8,7 @@ A PhD-level research tool that fits experimental photoluminescence lifetime deca
 
 ## Features
 
-- **11-state ODE physics engine** — full Yb³⁺/Tm³⁺ energy-level model with 20 kinetic parameters
+- **11-state ODE physics engine** — full Yb³⁺/Tm³⁺ energy-level model with 21 kinetic parameters
 - **8 emission channels**: 1800, 1230, 775, 477, 645, 452, 362, 345 nm
 - **Multi-channel batch fitting** — fit all emissions in sequence with automatic 775 nm calibration
 - **Adaptive quality loop** — automatic retry with weight escalation and tolerance checking
@@ -156,7 +156,7 @@ $$\vec{y} = [Yb_g,\ Yb_e,\ Tm_0,\ Tm_1,\ Tm_2,\ Tm_3,\ Tm_4,\ Tm_5,\ Tm_6,\ Tm_7
 | 0 | Rp | Pump rate (ms⁻¹) |
 | 1 | Ay | Yb spontaneous decay rate |
 | 2 | W1 | ET1: Yb → Tm (³H₆ → ³H₅) |
-| 3 | W2 | ET2: Yb → Tm (³F₄ → ³H₄) |
+| 3 | W2 | ET2: Yb → Tm (³F₄ → ³F₂,₃; then k35 → ³H₄) |
 | 4 | W3 | ET3: Yb → Tm (³H₄ → ¹G₄) |
 | 5 | W4 | ET4: Yb → Tm (¹G₄ → ¹D₂) |
 | 6 | W5 | ET5: Yb → Tm (¹D₂ → ³P) |
@@ -170,9 +170,50 @@ $$\vec{y} = [Yb_g,\ Yb_e,\ Tm_0,\ Tm_1,\ Tm_2,\ Tm_3,\ Tm_4,\ Tm_5,\ Tm_6,\ Tm_7
 | 14 | A71 | 452 nm radiative (Tm7 → Tm1) |
 | 15 | A80 | UV radiative (Tm8 → Tm0) |
 | 16 | A81 | 345 nm radiative (Tm8 → Tm1) |
-| 17 | Wcr | Cross-relaxation rate |
-| 18 | Wb | Back energy transfer ³H₄ → Yb |
-| 19 | T_offset | Time offset (ms) |
+| 17 | Wcr | ³H₄ + ³H₆ → 2 ³F₄ CR rate (Tm ≥ 1.0 mol%) |
+| 18 | Wb | ³H₄ → Yb back energy transfer (Yb > 10 mol%) |
+| 19 | WcrG4 | ¹G₄ + ³H₆ → ³H₄ + ³F₄ CR rate (Tm > 0.1 mol%) |
+| 20 | T_offset | Time offset (ms) |
+
+### Concentration-gated cross-relaxation and back-transfer ODE terms
+
+The fitted Yb/Tm ODE uses \(Tm_5={}^{3}H_4\), \(Tm_6={}^{1}G_4\),
+\(Tm_1={}^{3}F_4\), and \(Tm_0={}^{3}H_6\). For entered Tm and Yb concentrations
+\(c_{\mathrm{Tm}}\) and \(c_{\mathrm{Yb}}\) in mol%, the implemented channels are gated as
+
+\[
+\begin{aligned}
+r_{\mathrm{H4}}&=\mathbf{1}[c_{\mathrm{Tm}}\ge1.0]\,W_{\mathrm{cr}}\,Tm_5Tm_0,
+&&{}^{3}H_4+{}^{3}H_6\to2\,{}^{3}F_4,\\
+r_{\mathrm{G4}}&=\mathbf{1}[c_{\mathrm{Tm}}>0.1]\,W_{\mathrm{cr,G4}}\,Tm_6Tm_0,
+&&{}^{1}G_4+{}^{3}H_6\to{}^{3}H_4+{}^{3}F_4,\\
+b_{\mathrm{Yb}}&=\mathbf{1}[c_{\mathrm{Yb}}>10.0]\,W_b\,Tm_5Yb_g,
+&&{}^{3}H_4+\mathrm{Yb}^{3+}({}^{2}F_{7/2})
+\to{}^{3}H_6+\mathrm{Yb}^{3+}({}^{2}F_{5/2}).
+\end{aligned}
+\]
+
+The additional terms in the population derivatives are
+
+\[
+\begin{aligned}
+\dot{Tm}_0&\mathrel{+}=-r_{\mathrm{H4}}-r_{\mathrm{G4}}+b_{\mathrm{Yb}},&
+\dot{Tm}_1&\mathrel{+}=2r_{\mathrm{H4}}+r_{\mathrm{G4}},\\
+\dot{Tm}_5&\mathrel{+}=-r_{\mathrm{H4}}+r_{\mathrm{G4}}-b_{\mathrm{Yb}},&
+\dot{Tm}_6&\mathrel{+}=-r_{\mathrm{G4}}.
+\end{aligned}
+\]
+
+Thus \(r_{\mathrm{G4}}\) feeds the 775 nm emitting \(^{3}H_4\) state, enhancing modeled 775 nm
+emission while depleting the blue-emitting \(^{1}G_4\) state. \(r_{\mathrm{H4}}\) is a distinct
+fitted channel that becomes active at and above 1.0 mol% Tm, consuming \(^{3}H_4\) and quenching the
+concentration-enhanced 775 nm emission. The back-transfer channel is gated by Yb concentration
+and activates only above 10 mol% Yb. All these transfer terms conserve tracked total Tm population.
+The 0.1 mol% Tm and 10 mol% Yb thresholds are strict; the H4 CR gate includes exactly 1.0 mol% Tm.
+The seven-state Tm-only fitting model also preserves its existing
+\(^{1}D_2+{}^{3}H_6\) cross-relaxation as a third channel with its own fitted coefficient.
+See [the YF₃ concentration-dependent transfer chapter](./YF3_Tm_Cross_Relaxation_and_Back_Transfer.md)
+for the full energy-transfer illustration and discussion.
 
 ### Optimisation Strategy
 

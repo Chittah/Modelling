@@ -2,15 +2,17 @@
 
 ## Scope and interpretation
 
-This document specifies the single-Tm rate-equation model currently implemented by
+This document specifies the direct-Tm rate-equation model currently implemented by
 `run_fitting_single_tm` in `app.py`. The model has seven tracked Tm³⁺ manifolds and represents
-their populations during a finite excitation pulse and subsequent decay. It is a phenomenological
-kinetic model for fitting normalized time-resolved emission traces; it is not, by itself, evidence
-that every included process or numerical rate is correct for a particular specimen.
+their populations during a finite excitation pulse and subsequent decay. It supports both
+Yb-free direct-Tm excitation and direct-Tm excitation in a Yb/Tm co-doped sample. It is a
+phenomenological kinetic model for fitting normalized time-resolved emission traces; it is not, by
+itself, evidence that every included process or numerical rate is correct for a particular specimen.
 
-The same Tm rate equations are used for single-doped and Yb/Tm co-doped downshifting. For a
-single-doped sample, the Yb-transfer coefficient is set to zero. The separate ETUC model is not
-described here.
+The same Tm rate equations are used in both cases. For a Yb-free sample, the Yb concentration is
+zero. If Yb is present, the model enables an effective Tm-to-Yb loss term from \(^{3}H_4\) and
+\(^{1}G_4\); it does not explicitly track Yb excitation, relaxation, or Yb-to-Tm sensitization.
+The separate Yb-sensitized ETUC model is not described here.
 
 The parameter values listed below as defaults are software starting values, not certified
 literature constants. The fitted values, applicability of each pathway, and assumptions about
@@ -21,15 +23,15 @@ are used in a manuscript.
 
 The state vector is
 
-| Variable | Tm³⁺ manifold | Role |
-|---|---|---|
-| \(n_0\) | \(^{3}H_6\) | Ground state |
-| \(n_1\) | \(^{3}F_4\) | Lower metastable state |
-| \(n_3\) | \(^{3}H_4\) | 775 nm emitting state |
-| \(n_5\) | \(^{1}G_4\) | 645 nm and 477 nm emitting state |
-| \(n_6\) | \(^{1}D_2\) | 454 nm and 362 nm emitting state |
-| \(n_7\) | \(^{1}I_6\) | 346 nm emitting state |
-| \(n_8\) | \(^{3}P_2\) | High-lying state populated at 260 nm |
+| Population variable | ETUC-style state label | Tm³⁺ manifold | Role |
+|---|---|---|---|
+| \(n_0\) | \(Tm_0\) | \(^{3}H_6\) | Ground state |
+| \(n_1\) | \(Tm_1\) | \(^{3}F_4\) | Lower metastable state |
+| \(n_3\) | \(Tm_3\) | \(^{3}H_4\) | 775 nm emitting state |
+| \(n_5\) | \(Tm_5\) | \(^{1}G_4\) | 645 nm and 477 nm emitting state |
+| \(n_6\) | \(Tm_6\) | \(^{1}D_2\) | 454 nm and 362 nm emitting state |
+| \(n_7\) | \(Tm_7\) | \(^{1}I_6\) | 346 nm emitting state |
+| \(n_8\) | \(Tm_8\) | \(^{3}P_2\) | High-lying state populated at 260 nm |
 
 The subscripts are the model's labels; they are not a claim that all intervening spectroscopic
 manifolds are explicitly represented. In the ODE solver, the time variable is in milliseconds and
@@ -88,7 +90,7 @@ W_{87}n_8-(A_{70}+A_{71}+W_{76})n_7+u_7(t),\\
 \end{aligned}
 \]
 
-For single-doped Tm, \(c_{\mathrm{Yb}}=0\), hence \(k_{\mathrm{Yb}}=0\). The two cross-relaxation
+For Yb-free Tm, \(c_{\mathrm{Yb}}=0\), hence \(k_{\mathrm{Yb}}=0\). With Yb co-doping, the two cross-relaxation
 terms represent the implemented reactions
 
 \[
@@ -103,9 +105,10 @@ bilinear products from normalized populations. Thus \(K_{\mathrm{cr}}\) is an ef
 concentration-scaled coefficient in this model, not automatically a transferable bimolecular
 constant in physical volume units.
 
-The \(k_{\mathrm{Yb}}\) terms represent donor Tm³⁺ returning to its ground state after transferring
-excitation to Yb³⁺. This optional loss is applied to \(^{3}H_4\) and \(^{1}G_4\) in the implementation;
-it is absent in single-doped fits.
+The \(k_{\mathrm{Yb}}\) terms represent excited Tm³⁺ returning to its ground state after transferring
+excitation to Yb³⁺. This optional loss is applied to \(^{3}H_4\) and \(^{1}G_4\) when a positive Yb
+concentration is entered. It is an effective sink term: the ODE does not contain Yb state variables
+or a Yb relaxation rate, and does not model Yb-to-Tm energy transfer.
 
 ## Excitation terms
 
@@ -174,13 +177,13 @@ asserted to be sample-specific measured constants.
 | \(A_{60}\) | \(^{1}D_2\to{}^{3}H_6\) | 1.0 | Radiative branch from \(n_6\), associated with 362 nm. |
 | \(A_{61}\) | \(^{1}D_2\to{}^{3}F_4\) | 3.0 | Radiative branch from \(n_6\), associated with 454 nm. |
 | \(A_{63}\) | \(^{1}D_2\to{}^{3}H_4\) | 0.3 | Radiative feeding of \(n_3\) from \(n_6\). |
-| \(A_{70}\) | \(^{1}I_6\to{}^{3}H_6\) | 3.0 | Radiative branch from \(n_7\). |
+| \(A_{70}\) | \(^{1}I_6\to{}^{3}H_6\) | 3.0 | Competing radiative decay branch from \(n_7\); it contributes to \(^{1}I_6\) depopulation but is not the modeled 345/346 nm observable. |
 | \(A_{71}\) | \(^{1}I_6\to{}^{3}F_4\) | 4.0 | Radiative branch from \(n_7\), associated with 345/346 nm. |
 | \(W_{87}\) | \(^{3}P_2\to{}^{1}I_6\) | 500.0 | Effective non-radiative feed from \(n_8\) to the 346 nm emitting state. |
 | \(W_{76}\) | \(^{1}I_6\to{}^{1}D_2\) | 1.0 | Effective non-radiative feed from \(n_7\) to \(n_6\). |
 | \(W_{65}\) | \(^{1}D_2\to{}^{1}G_4\) | 0.5 | Effective non-radiative feed from \(n_6\) to \(n_5\). |
 | \(K_{\mathrm{cr}}\) | Tm–Tm cross-relaxation coefficient | 2.0 | Multiplied by entered Tm mol% to give the coefficient in \(r_1,r_2\). |
-| \(K_{\mathrm{yb}}\) | Tm-to-Yb transfer coefficient | 0.5 | Multiplied by entered Yb mol%; used only in co-doped mode and set to zero for single-doped Tm. |
+| \(K_{\mathrm{yb}}\) | Effective Tm-to-Yb loss coefficient | 0.5 | Multiplied by entered Yb mol% in direct-Tm mode; zero when Yb is absent. This is a sink term, not an explicit Yb-state model. |
 | \(T_{\mathrm{offset}}\) | Time-zero shift | 0.0 | Shifts model time relative to measured time; bounded by the fitter. |
 | \(t_p\) | Pulse duration | User input | Rectangular pulse duration, normally fitted within ±30% of the entered pulse. |
 | \(L_{\mathrm{obs}}\) | Observed-level rate scale | 1.0 multiplier | Multiplies all radiative rates for the observed level by one common factor, retaining their branching ratios. This is a fitted log-scale variable. |
@@ -206,6 +209,13 @@ fitted multiplicative scale during least-squares evaluation. The implemented emi
 | 775 nm | \(^{3}H_4\), \(n_3\) | \(A_{30}n_3\) |
 | 1800 nm | \(^{3}F_4\), \(n_1\) | \(A_{10}n_1\) |
 
+For the 345/346 nm channel, the observable is \(A_{71}n_7\). \(A_{70}\) is still included in
+\(dn_7/dt\) as another \(^{1}I_6\) decay branch, so it can affect the population lifetime and
+therefore the measured trace shape even though the program does not report an \(A_{70}n_7\)
+emission channel. The \(^{3}P_2\) state has only the modeled \(W_{87}\) relaxation outflow; the
+current direct-Tm equations apply neither cross-relaxation nor Tm-to-Yb loss to \(^{3}P_2\) or
+\(^{1}I_6\).
+
 The code's instrument-response approximation uses a Gaussian width derived from the sample interval
 and pulse duration; it is not a measured instrument response function (IRF). The fitted trace is
 normalized/scaled, so the fit principally constrains time-dependent shape. It does not independently
@@ -221,8 +231,11 @@ In general, it can include:
 - feeder rates along the cascade between the entry and observed states;
 - radiative rates at the observed state, represented by their priors multiplied by the single
   \(L_{\mathrm{obs}}\) scale;
-- \(K_{\mathrm{cr}}\) when the entered Tm concentration is at least 0.3 mol%;
-- \(K_{\mathrm{yb}}\) only when Yb is present;
+- \(K_{\mathrm{cr}}\) when Tm is at least 0.3 mol% and the selected emitting level is \(^{1}D_2\)
+  or lower in the modeled cascade; it cannot affect \(^{3}P_2\) or \(^{1}I_6\) traces;
+- \(K_{\mathrm{yb}}\) when Yb is present and the selected emitting level is \(^{1}G_4\) or lower;
+  the model applies this effective loss only to \(^{3}H_4\) and \(^{1}G_4\), not to \(^{3}P_2\)
+  or \(^{1}I_6\);
 - \(T_{\mathrm{offset}}\) and pulse duration.
 
 Rates outside the fitted pathway generally remain fixed at their software priors. For example,

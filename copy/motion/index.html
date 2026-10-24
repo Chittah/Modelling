@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Standalone animation of Yb/Tm co-doped energy transfer and single-doped Tm excitation, relaxation, and emission.">
+    <title>Tm Energy-Transfer Motion</title>
+    <link rel="stylesheet" href="motion.css">
+</head>
+<body>
+    <main class="motion-app">
+        <header class="page-header">
+            <p class="eyebrow">Tm³⁺ · energy-transfer pathways</p>
+            <h1>Energy-transfer motion</h1>
+            <p class="intro">Choose Yb-sensitized ETUC or direct Tm³⁺ excitation, optionally with Yb³⁺ co-doping. Each stage identifies the ion states and interaction being shown.</p>
+        </header>
+
+        <section class="controls" aria-label="Simulation controls">
+            <label>
+                Material model
+                <select id="modelSelect">
+                    <option value="etuc" selected>Yb³⁺ / Tm³⁺ co-doped</option>
+                    <option value="single-tm">Direct Tm³⁺ excitation</option>
+                </select>
+            </label>
+            <label id="excitationControl" hidden>
+                Tm excitation
+                <select id="excitationSelect">
+                    <option value="260">260 nm · ³H₆ → ³P₂</option>
+                    <option value="356">356 nm · ³H₆ → ¹D₂</option>
+                    <option value="466">466 nm · ³H₆ → ¹G₄</option>
+                    <option value="690">690 nm · ³H₆ → ³H₄ → ¹D₂ (ESA)</option>
+                    <option value="785">785 nm · ³H₆ → ³H₄ → ¹G₄ (ESA)</option>
+                    <option value="1210">1210 nm · ³H₆ → ³H₄ → ¹G₄ (ESA)</option>
+                </select>
+            </label>
+            <label>
+                Emission channel
+                <select id="emissionSelect">
+                    <option value="1800">1800 nm · ³F₄ → ³H₆</option>
+                    <option value="775" selected>775 nm · ³H₄ → ³H₆</option>
+                    <option value="477">477 nm · ¹G₄ → ³H₆</option>
+                    <option value="645">645 nm · ¹G₄ → ³F₄</option>
+                    <option value="362">362 nm · ¹D₂ → ³H₆</option>
+                    <option value="452">452 nm · ¹D₂ → ³F₄</option>
+                    <option value="345">345 nm · ¹I₆ → ³F₄</option>
+                </select>
+            </label>
+            <label>
+                Host material
+                <select id="hostSelect">
+                    <option value="NaYF4">β-NaYF₄</option>
+                    <option value="YF3">YF₃</option>
+                    <option value="GdF3">GdF₃</option>
+                    <option value="Y2O3">Y₂O₃</option>
+                    <option value="YLF">YLF</option>
+                    <option value="YAG">YAG</option>
+                </select>
+                <small>Motion is qualitative; displayed level energies remain YF₃ references.</small>
+            </label>
+            <label>
+                Tm concentration
+                <div class="input-with-unit"><input id="tmConcentration" type="number" min="0" max="100" step="0.01" value="0.5"><span>mol%</span></div>
+            </label>
+            <label id="ybControl">
+                Yb concentration
+                <div class="input-with-unit"><input id="ybConcentration" type="number" min="0" max="100" step="0.1" value="20"><span>mol%</span></div>
+                <small id="ybHelp">Yb concentration is optional in direct Tm excitation; 0 means no Yb.</small>
+            </label>
+            <div class="buttons">
+                <button id="runButton" class="primary-button" type="button">▶ Run motion</button>
+                <button id="resetButton" class="secondary-button" type="button">↺ Reset</button>
+            </div>
+        </section>
+
+        <section class="path-summary" aria-label="Selected route">
+            <strong id="routeTitle">775 nm pathway</strong>
+            <span id="routeSummary"></span>
+        </section>
+
+        <section class="motion-layout">
+            <div class="diagram-panel">
+                <div class="diagram-topline">
+                    <span>Energy levels and moving ions</span>
+                    <span class="live-status" id="liveStatus" aria-live="polite">Ready</span>
+                </div>
+                <div class="svg-scroll">
+                    <svg id="energyDiagram" viewBox="0 0 950 520" role="img" aria-label="Animated Yb and Tm energy-level diagram with reference energies"></svg>
+                </div>
+                <div class="legend" aria-label="Ion-state legend">
+                    <span><i class="swatch tm-ground"></i>Tm ground</span>
+                    <span><i class="swatch tm-excited"></i>Tm excited</span>
+                    <span class="yb-only"><i class="swatch yb-ground"></i>Yb ground</span>
+                    <span class="yb-only"><i class="swatch yb-excited"></i>Yb excited</span>
+                </div>
+            </div>
+
+            <aside class="step-panel">
+                <div class="step-count" id="stepCount">Ready to run</div>
+                <h2 id="stepTitle">Choose a pathway and run the motion</h2>
+                <p id="stepDescription">The Yb ions begin in ²F₇/₂. The animation then shows donor excitation, dipole–dipole transfer, Tm relaxation, optional concentration-gated branches, and the selected emission.</p>
+                <div class="step-progress" aria-label="Pathway progress"><div id="progressBar"></div></div>
+                <h3>Pathway sequence</h3>
+                <ol id="stepList" class="step-list"></ol>
+                <p class="model-note" id="modelNote">The selected host is for context only; the cm⁻¹ axis uses representative YF₃:Tm³⁺ reference energies, with approximate upper-level positions. This is a qualitative route animation based on the existing ODE transitions, not a numerical population simulation. Yb in direct Tm mode shows the ODE’s effective Tm→Yb loss from ³H₄ and ¹G₄; it does not model Yb excitation or relaxation kinetics. Ion counts and sizes are illustrative.</p>
+            </aside>
+        </section>
+
+        <footer class="page-footer">
+            <a href="../interactive_fitter%20copy.html" target="_top">Return to the interactive fitter</a>
+            <span>Standalone motion screen · no fitting data required</span>
+        </footer>
+    </main>
+    <script src="motion.js"></script>
+</body>
+</html>

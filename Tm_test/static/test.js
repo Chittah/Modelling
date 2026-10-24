@@ -90,18 +90,18 @@ window.addEventListener("DOMContentLoaded", () => {
 });
 // --- 2b. Multi-Channel Slot & Order Configuration ---
 const MULTI_CHANNEL_SLOTS = [
-    { id: 'slot775', defaultEmission: '775', role: 'mandatory' },
-    { id: 'slot477', defaultEmission: '477', role: 'mandatory' },
+    { id: 'slot775', defaultEmission: '775', role: 'optional' },
+    { id: 'slot477', defaultEmission: '477', role: 'optional' },
     { id: 'slot645', defaultEmission: '645', role: 'optional' },
-    { id: 'slot362', defaultEmission: '362', role: 'mandatory' },
+    { id: 'slot362', defaultEmission: '362', role: 'optional' },
     { id: 'slot452', defaultEmission: '452', role: 'optional' },
-    { id: 'slot345', defaultEmission: '345', role: 'mandatory' },
+    { id: 'slot345', defaultEmission: '345', role: 'optional' },
     { id: 'slot1800', defaultEmission: '1800', role: 'optional' },
     { id: 'slot1230', defaultEmission: '1230', role: 'optional' },
 ];
 
 const MULTI_CHANNEL_ORDER = ['775', '477', '645', '362', '452', '345'];
-const MULTI_CHANNEL_MANDATORY = new Set(['775', '477', '362', '345']);
+const MULTI_CHANNEL_MANDATORY = new Set([]);
 const MULTI_CHANNEL_MIN_R2 = {
     '775': 0.99,
     '477': 0.99,
@@ -367,14 +367,14 @@ const odeDatabase = {
         depopulation: ["A₂₀ · [N₂] (Radiative)", "W_nr · [N₂] (Non-radiative)"]
     },
     "775": {
-        latex: "\\frac{dTm_5}{dt} = W_2 \\cdot Yb_e \\cdot Tm_1 - A_{50} \\cdot Tm_5 - W_{cr} \\cdot Tm_5 \\cdot Tm_0 - W_3 \\cdot Yb_e \\cdot Tm_5 - W_b \\cdot Tm_5 \\cdot Yb_g",
-        population: ["W₂ · Ybₑ · Tm₁ (second ET feeding Tm₅)"],
-        depopulation: ["A₅₀ · Tm₅ (radiative 775 nm)", "Wcr · Tm₅ · Tm₀ (cross-relaxation)", "W₃ · Ybₑ · Tm₅ (ET → ¹G₄)", "Wb · Tm₅ · Ybg (back transfer ³H₄→Yb)"]
+        latex: "\\frac{dTm_5}{dt} = W_2 \\cdot Yb_e \\cdot Tm_1 + W_{cr,G4} \\cdot Tm_6 \\cdot Tm_0 - A_{50} \\cdot Tm_5 - W_3 \\cdot Yb_e \\cdot Tm_5 - W_{cr,H4} \\cdot Tm_5 \\cdot Tm_0 - W_b \\cdot Tm_5 \\cdot Yb_g",
+        population: ["W₂ · Ybₑ · Tm₁ (second ET feeding Tm₅)", "WcrG4 · Tm₆ · Tm₀ (¹G₄ CR feeds ³H₄)"],
+        depopulation: ["A₅₀ · Tm₅ (radiative 775 nm)", "W₃ · Ybₑ · Tm₅ (ET → ¹G₄)", "Wcr,H4 · Tm₅ · Tm₀ (³H₄ CR, for Tm ≥ 1.0 mol%)", "Wb · Tm₅ · Ybg (back transfer, only for Yb > 10 mol%)"]
     },
     "477": {
-        latex: "\\frac{dTm_6}{dt} = W_3 \\cdot Yb_e \\cdot Tm_5 - (A_{60} + A_{61}) \\cdot Tm_6 - W_4 \\cdot Yb_e \\cdot Tm_6",
+        latex: "\\frac{dTm_6}{dt} = W_3 \\cdot Yb_e \\cdot Tm_5 - (A_{60} + A_{61}) \\cdot Tm_6 - W_4 \\cdot Yb_e \\cdot Tm_6 - W_{cr,G4} \\cdot Tm_6 \\cdot Tm_0",
         population: ["W3 · Ybₑ · Tm₅", "Observable: I₄₇₇ ∝ A60 · Tm₆"],
-        depopulation: ["A60 · Tm₆", "A61 · Tm₆", "W4 · Ybₑ · Tm₆"]
+        depopulation: ["A60 · Tm₆", "A61 · Tm₆", "W4 · Ybₑ · Tm₆", "WcrG4 · Tm₆ · Tm₀ (only for Tm > 0.1 mol%)"]
     },
     "362": {
         latex: "\\frac{dTm_7}{dt} = W_4 \\cdot Yb_e \\cdot Tm_6 - (A_{70} + A_{71}) \\cdot Tm_7 - W_5 \\cdot Yb_e \\cdot Tm_7",
@@ -382,9 +382,9 @@ const odeDatabase = {
         depopulation: ["A70 · Tm₇", "A71 · Tm₇", "W5 · Ybₑ · Tm₇"]
     },
     "645": {
-        latex: "\\frac{dTm_6}{dt} = W_3 \\cdot Yb_e \\cdot Tm_5 - (A_{60} + A_{61}) \\cdot Tm_6 - W_4 \\cdot Yb_e \\cdot Tm_6",
+        latex: "\\frac{dTm_6}{dt} = W_3 \\cdot Yb_e \\cdot Tm_5 - (A_{60} + A_{61}) \\cdot Tm_6 - W_4 \\cdot Yb_e \\cdot Tm_6 - W_{cr,G4} \\cdot Tm_6 \\cdot Tm_0",
         population: ["W3 · Ybₑ · Tm₅", "Observable: I₆₄₅ ∝ A61 · Tm₆"],
-        depopulation: ["A60 · Tm₆", "A61 · Tm₆", "W4 · Ybₑ · Tm₆"]
+        depopulation: ["A60 · Tm₆", "A61 · Tm₆", "W4 · Ybₑ · Tm₆", "WcrG4 · Tm₆ · Tm₀ (only for Tm > 0.1 mol%)"]
     },
     "452": {
         latex: "\\frac{dTm_7}{dt} = W_4 \\cdot Yb_e \\cdot Tm_6 - (A_{70} + A_{71}) \\cdot Tm_7 - W_5 \\cdot Yb_e \\cdot Tm_7",
@@ -399,284 +399,113 @@ const odeDatabase = {
 };
 
 // --- 2d-ii. Single-Doped Tm³⁺ ODE Database (no Yb sensitizer) ---
-// In single-doped Tm, upconversion occurs via GSA + ESA and/or ETU between Tm ions.
-// Excitation wavelengths: 785 nm (³H₆→³H₄), 1210 nm (³H₆→³H₅), 690 nm (³H₆→³F₂,₃→³H₄)
-// Direct single-photon excitation: 260 nm (³H₆→³P₂), 356 nm (³H₆→¹D₂), 466 nm (³H₆→¹G₄)
-// State labels: Tm0 = ³H₆(ground), Tm1 = ³F₄, Tm2 = ³H₅, Tm3 = ³H₄, Tm4 = ³F₂,₃, Tm5 = ¹G₄, Tm6 = ¹D₂, Tm7 = ¹I₆
-const odeDatabaseSingleTm = {
-    "785": {
-        excitation_label: "785 nm (³H₆ → ³H₄) GSA",
-        description: "Direct ground-state absorption into ³H₄. ESA from ³H₄ populates ¹G₄. Cross-relaxation redistributes energy at high Tm concentrations.",
-        states: {
-            "Tm0": {
-                latex: "\\frac{dTm_0}{dt} = -\\sigma_{GSA} \\cdot \\Phi \\cdot Tm_0 + A_{30} \\cdot Tm_3 + A_{10} \\cdot Tm_1 + W_{CR} \\cdot Tm_3^2",
-                label: "³H₆ (ground)",
-                population: ["A₃₀ · Tm₃ (radiative from ³H₄)", "A₁₀ · Tm₁ (radiative from ³F₄)", "W_CR · Tm₃² (cross-relaxation feeds ground)"],
-                depopulation: ["σ_GSA · Φ · Tm₀ (785 nm absorption)"]
-            },
-            "Tm1": {
-                latex: "\\frac{dTm_1}{dt} = W_{NR,21} \\cdot Tm_2 + A_{31} \\cdot Tm_3 + W_{CR} \\cdot Tm_3^2 - A_{10} \\cdot Tm_1",
-                label: "³F₄",
-                observable: "1800 nm: I₁₈₀₀ ∝ A₁₀ · Tm₁",
-                population: ["W_NR,21 · Tm₂ (NR from ³H₅)", "A₃₁ · Tm₃ (radiative from ³H₄)", "W_CR · Tm₃² (CR product)"],
-                depopulation: ["A₁₀ · Tm₁ (radiative 1800 nm)"]
-            },
-            "Tm3": {
-                latex: "\\frac{dTm_3}{dt} = \\sigma_{GSA} \\cdot \\Phi \\cdot Tm_0 + W_{NR,43} \\cdot Tm_4 - (A_{30} + A_{31}) \\cdot Tm_3 - \\sigma_{ESA} \\cdot \\Phi \\cdot Tm_3 - 2 W_{CR} \\cdot Tm_3^2",
-                label: "³H₄",
-                observable: "775 nm: I₇₇₅ ∝ A₃₀ · Tm₃",
-                population: ["σ_GSA · Φ · Tm₀ (ground-state absorption)", "W_NR,43 · Tm₄ (NR from ³F₂,₃)"],
-                depopulation: ["(A₃₀+A₃₁) · Tm₃ (radiative)", "σ_ESA · Φ · Tm₃ (ESA to ¹G₄)", "2·W_CR · Tm₃² (cross-relaxation)"]
-            },
-            "Tm5": {
-                latex: "\\frac{dTm_5}{dt} = \\sigma_{ESA} \\cdot \\Phi \\cdot Tm_3 - (A_{50} + A_{51}) \\cdot Tm_5",
-                label: "¹G₄",
-                observable: "477 nm: I₄₇₇ ∝ A₅₀ · Tm₅ | 645 nm: I₆₄₅ ∝ A₅₁ · Tm₅",
-                population: ["σ_ESA · Φ · Tm₃ (ESA from ³H₄)"],
-                depopulation: ["A₅₀ · Tm₅ (radiative 477 nm)", "A₅₁ · Tm₅ (radiative 645 nm)"]
+// Generated from ONE set of equations: the seven coupled rate equations that the backend integrates
+// (_st_rhs / run_fitting_single_tm in test.py, documented in README_single_doped_Tm_ODE.md).
+// Time is in ms, so every rate is in ms⁻¹. Only the pump terms change with the excitation wavelength.
+// State keys: Tm0 = ³H₆ (Tm₀), Tm1 = ³F₄ (Tm₁), Tm3 = ³H₄ (Tm₃), Tm5 = ¹G₄ (Tm₅), Tm6 = ¹D₂ (Tm₆), Tm7 = ¹I₆ (Tm₇), Tm8 = ³P₂ (Tm₈).
+const odeDatabaseSingleTm = (() => {
+    const LEVELS = [
+        { key: "Tm8", n: 8, label: "³P₂",
+          rhs: "- W_{87} Tm_8",
+          pop: [],
+          dep: ["W₈₇ · Tm₈ (fast multiphonon → ¹I₆)"] },
+        { key: "Tm7", n: 7, label: "¹I₆",
+          rhs: "W_{87} Tm_8 - (A_{70} + A_{71} + W_{76}) Tm_7",
+          observable: "346 nm: I₃₄₆ ∝ A₇₁ · Tm₇ (¹I₆ → ³F₄)",
+          pop: ["W₈₇ · Tm₈"],
+          dep: ["A₇₀ · Tm₇ (→ ³H₆)", "A₇₁ · Tm₇ (→ ³F₄, 346 nm)", "W₇₆ · Tm₇ (→ ¹D₂)"] },
+        { key: "Tm6", n: 6, label: "¹D₂",
+          rhs: "W_{76} Tm_7 - (A_{60} + A_{61} + A_{63} + W_{65}) Tm_6 - r_{D2}",
+          observable: "454 nm: I₄₅₄ ∝ A₆₁ · Tm₆ (¹D₂ → ³F₄) | 362 nm: I₃₆₂ ∝ A₆₀ · Tm₆",
+          pop: ["W₇₆ · Tm₇"],
+          dep: ["A₆₀ · Tm₆ (→ ³H₆, 362 nm)", "A₆₁ · Tm₆ (→ ³F₄, 454 nm)", "A₆₃ · Tm₆ (→ ³H₄)", "W₆₅ · Tm₆ (→ ¹G₄)", "rD2 = Kcr · Tm₆ · Tm₀ (legacy CR, only when Tm > 0.1 mol%)"] },
+        { key: "Tm5", n: 5, label: "¹G₄",
+          rhs: "W_{65} Tm_6 - (A_{50} + A_{51} + A_{53}) Tm_5 + r_{D2} - r_{G4}",
+          observable: "477 nm: I₄₇₇ ∝ A₅₀ · Tm₅ | 645 nm: I₆₄₅ ∝ A₅₁ · Tm₅ (¹G₄ → ³F₄)",
+          pop: ["W₆₅ · Tm₆", "r₂ (cross-relaxation product)"],
+          dep: ["A₅₀ · Tm₅ (→ ³H₆, 477 nm)", "A₅₁ · Tm₅ (→ ³F₄, 645 nm)", "A₅₃ · Tm₅ (→ ³H₄)", "rG4 = WcrG4 · Tm₅ · Tm₀ (CR, only when Tm > 0.1 mol%)"] },
+        { key: "Tm3", n: 3, label: "³H₄",
+          rhs: "A_{53} Tm_5 + A_{63} Tm_6 - (A_{30} + A_{31}) Tm_3 - r_{H4} + r_{G4} - b_{Yb}",
+          observable: "775 nm: I₇₇₅ ∝ A₃₀ · Tm₃",
+          pop: ["A₅₃ · Tm₅", "A₆₃ · Tm₆", "rG4 (¹G₄ + ³H₆ → ³H₄ + ³F₄)"],
+          dep: ["A₃₀ · Tm₃ (→ ³H₆, 775 nm)", "A₃₁ · Tm₃ (→ ³F₄)", "bYb = k_Yb · Tm₃ (back-transfer, only when Yb > 10 mol%)", "rH4 = KcrH4 · Tm₃ · Tm₀ (CR, when Tm ≥ 1.0 mol%)"] },
+        { key: "Tm1", n: 1, label: "³F₄",
+          rhs: "A_{31} Tm_3 + A_{51} Tm_5 + A_{61} Tm_6 + A_{71} Tm_7 - A_{10} Tm_1 + 2 r_{H4} + r_{D2} + r_{G4}",
+          observable: "1800 nm: I₁₈₀₀ ∝ A₁₀ · Tm₁",
+          pop: ["A₃₁ · Tm₃", "A₅₁ · Tm₅", "A₆₁ · Tm₆", "A₇₁ · Tm₇", "2rH4 + rD2 + rG4 (cross-relaxation products)"],
+          dep: ["A₁₀ · Tm₁ (→ ³H₆, 1800 nm)"] },
+        { key: "Tm0", n: 0, label: "³H₆ (ground)",
+          rhs: "A_{10} Tm_1 + A_{30} Tm_3 + A_{50} Tm_5 + A_{60} Tm_6 + A_{70} Tm_7 + b_{Yb} - r_{H4} - r_{D2} - r_{G4}",
+          pop: ["A₁₀·Tm₁ + A₃₀·Tm₃ + A₅₀·Tm₅ + A₆₀·Tm₆ + A₇₀·Tm₇ (radiative returns)", "bYb (Tm → Yb back-transfer)"],
+          dep: ["rH4 + rD2 + rG4 (cross-relaxation)"] },
+    ];
+    const SUB = { 0: "₀", 1: "₁", 3: "₃", 5: "₅", 6: "₆", 7: "₇", 8: "₈" };
+    const LABEL = { 3: "³H₄", 5: "¹G₄", 6: "¹D₂", 7: "¹I₆", 8: "³P₂" };
+
+    const common = "Same seven coupled rate equations the solver integrates (time in ms, rates in ms⁻¹). "
+        + "CR rates: \\(r_{G4} = K_{cr,G4}[\\mathrm{Tm}]Tm_5Tm_0\\) only for Tm > 0.1 mol%; \\(r_{H4} = K_{cr,H4}[\\mathrm{Tm}]Tm_3Tm_0\\) for Tm ≥ 1.0 mol%; legacy \\(r_{D2} = K_{cr}[\\mathrm{Tm}]Tm_6Tm_0\\) only above 0.1 mol%. "
+        + "Tm→Yb back-transfer \\(b_{Yb} = k_{Yb} Tm_3\\), where \\(k_{Yb} = K_{yb}\\,[\\mathrm{Yb}]\\), is active only above 10 mol% Yb. "
+        + "The pump \\(G\\,Tm_0\\) is a rectangular pulse of width \\(t_p\\).";
+
+    const build = (label, entry, esa, text) => {
+        const states = {};
+        LEVELS.forEach(lv => {
+            let rhs = lv.rhs;
+            const pop = lv.pop.slice();
+            const dep = lv.dep.slice();
+            if (lv.n === 0) {
+                rhs += " - G\\, Tm_0";
+                dep.unshift("G · Tm₀ (pump during the pulse)");
             }
-        },
-        parameters: {
-            "σ_GSA": "Ground-state absorption cross-section at 785 nm (cm²)",
-            "σ_ESA": "Excited-state absorption cross-section ³H₄→¹G₄ (cm²)",
-            "Φ": "Photon flux (photons·cm⁻²·s⁻¹)",
-            "W_CR": "Cross-relaxation rate: ³H₄ + ³H₄ → ³F₄ + ³H₆ (s⁻¹·cm³)",
-            "W_NR,21": "Non-radiative ³H₅ → ³F₄ rate (s⁻¹)",
-            "W_NR,43": "Non-radiative ³F₂,₃ → ³H₄ rate (s⁻¹)"
-        }
-    },
-    "1210": {
-        excitation_label: "1210 nm (³H₆ → ³H₅) GSA",
-        description: "Direct absorption into ³H₅ followed by multiphonon relaxation to ³H₄ or ESA sequences. Requires multiple sequential photon absorptions for visible upconversion.",
-        states: {
-            "Tm0": {
-                latex: "\\frac{dTm_0}{dt} = -\\sigma_{GSA} \\cdot \\Phi \\cdot Tm_0 + A_{10} \\cdot Tm_1",
-                label: "³H₆ (ground)",
-                population: ["A₁₀ · Tm₁ (radiative from ³F₄)"],
-                depopulation: ["σ_GSA · Φ · Tm₀ (1210 nm absorption)"]
-            },
-            "Tm2": {
-                latex: "\\frac{dTm_2}{dt} = \\sigma_{GSA} \\cdot \\Phi \\cdot Tm_0 - W_{NR,21} \\cdot Tm_2 - \\sigma_{ESA1} \\cdot \\Phi \\cdot Tm_2",
-                label: "³H₅",
-                observable: "1230 nm: I₁₂₃₀ ∝ A₂₀ · Tm₂",
-                population: ["σ_GSA · Φ · Tm₀ (absorption)"],
-                depopulation: ["W_NR,21 · Tm₂ (NR to ³F₄)", "σ_ESA1 · Φ · Tm₂ (ESA to ³F₂,₃)"]
-            },
-            "Tm3": {
-                latex: "\\frac{dTm_3}{dt} = W_{NR,43} \\cdot Tm_4 - (A_{30} + A_{31}) \\cdot Tm_3 - \\sigma_{ESA2} \\cdot \\Phi \\cdot Tm_3",
-                label: "³H₄",
-                observable: "775 nm: I₇₇₅ ∝ A₃₀ · Tm₃",
-                population: ["W_NR,43 · Tm₄ (NR from ³F₂,₃)"],
-                depopulation: ["(A₃₀+A₃₁) · Tm₃ (radiative)", "σ_ESA2 · Φ · Tm₃ (ESA to ¹G₄)"]
-            },
-            "Tm4": {
-                latex: "\\frac{dTm_4}{dt} = \\sigma_{ESA1} \\cdot \\Phi \\cdot Tm_2 - W_{NR,43} \\cdot Tm_4",
-                label: "³F₂,₃",
-                population: ["σ_ESA1 · Φ · Tm₂ (ESA from ³H₅)"],
-                depopulation: ["W_NR,43 · Tm₄ (fast NR to ³H₄)"]
-            },
-            "Tm5": {
-                latex: "\\frac{dTm_5}{dt} = \\sigma_{ESA2} \\cdot \\Phi \\cdot Tm_3 - (A_{50} + A_{51}) \\cdot Tm_5",
-                label: "¹G₄",
-                observable: "477 nm: I₄₇₇ ∝ A₅₀ · Tm₅ | 645 nm: I₆₄₅ ∝ A₅₁ · Tm₅",
-                population: ["σ_ESA2 · Φ · Tm₃ (ESA from ³H₄)"],
-                depopulation: ["A₅₀ · Tm₅ (radiative 477 nm)", "A₅₁ · Tm₅ (radiative 645 nm)"]
+            if (lv.n === entry) {
+                rhs += " + G\\, Tm_0";
+                pop.unshift("G · Tm₀ (pump, pulse width t_p)");
             }
-        },
-        parameters: {
-            "σ_GSA": "Ground-state absorption cross-section at 1210 nm (cm²)",
-            "σ_ESA1": "ESA cross-section ³H₅→³F₂,₃ (cm²)",
-            "σ_ESA2": "ESA cross-section ³H₄→¹G₄ (cm²)",
-            "Φ": "Photon flux (photons·cm⁻²·s⁻¹)",
-            "W_NR,21": "Non-radiative ³H₅ → ³F₄ rate (s⁻¹)",
-            "W_NR,43": "Non-radiative ³F₂,₃ → ³H₄ rate (s⁻¹)"
-        }
-    },
-    "690": {
-        excitation_label: "690 nm (³H₆ → ³F₂,₃ → ³H₄) GSA",
-        description: "Pumping directly to ³F₂,₃ which rapidly relaxes to ³H₄. ESA from ³H₄ reaches ¹D₂ yielding UV/blue emission.",
-        states: {
-            "Tm0": {
-                latex: "\\frac{dTm_0}{dt} = -\\sigma_{GSA} \\cdot \\Phi \\cdot Tm_0 + A_{10} \\cdot Tm_1 + A_{30} \\cdot Tm_3",
-                label: "³H₆ (ground)",
-                population: ["A₁₀ · Tm₁ (from ³F₄)", "A₃₀ · Tm₃ (from ³H₄)"],
-                depopulation: ["σ_GSA · Φ · Tm₀ (690 nm absorption)"]
-            },
-            "Tm3": {
-                latex: "\\frac{dTm_3}{dt} = W_{NR,43} \\cdot Tm_4 - (A_{30} + A_{31}) \\cdot Tm_3 - \\sigma_{ESA} \\cdot \\Phi \\cdot Tm_3",
-                label: "³H₄",
-                observable: "775 nm: I₇₇₅ ∝ A₃₀ · Tm₃",
-                population: ["W_NR,43 · Tm₄ (fast NR from ³F₂,₃)"],
-                depopulation: ["(A₃₀+A₃₁) · Tm₃ (radiative)", "σ_ESA · Φ · Tm₃ (ESA to ¹D₂)"]
-            },
-            "Tm4": {
-                latex: "\\frac{dTm_4}{dt} = \\sigma_{GSA} \\cdot \\Phi \\cdot Tm_0 - W_{NR,43} \\cdot Tm_4",
-                label: "³F₂,₃",
-                population: ["σ_GSA · Φ · Tm₀ (absorption)"],
-                depopulation: ["W_NR,43 · Tm₄ (fast NR relaxation, ~ps)"]
-            },
-            "Tm6": {
-                latex: "\\frac{dTm_6}{dt} = \\sigma_{ESA} \\cdot \\Phi \\cdot Tm_3 - (A_{60} + A_{61}) \\cdot Tm_6",
-                label: "¹D₂",
-                observable: "362 nm: I₃₆₂ ∝ A₆₀ · Tm₆ | 452 nm: I₄₅₂ ∝ A₆₁ · Tm₆",
-                population: ["σ_ESA · Φ · Tm₃ (ESA from ³H₄)"],
-                depopulation: ["A₆₀ · Tm₆ (radiative 362 nm)", "A₆₁ · Tm₆ (radiative 452 nm)"]
+            if (esa && lv.n === entry) {
+                rhs += " - G_2\\, Tm_" + entry;
+                dep.push("G₂ · Tm" + SUB[entry] + " (ESA → " + LABEL[esa] + ")");
             }
-        },
-        parameters: {
-            "σ_GSA": "Ground-state absorption cross-section at 690 nm (cm²)",
-            "σ_ESA": "ESA cross-section ³H₄→¹D₂ (cm²)",
-            "Φ": "Photon flux (photons·cm⁻²·s⁻¹)",
-            "W_NR,43": "Non-radiative ³F₂,₃ → ³H₄ rate (s⁻¹)"
-        }
-    },
-    // ---- Direct (single-photon) excitation of Tm3+ levels. Levels: Tm0=3H6, Tm1=3F4, Tm3=3H4,
-    // ---- Tm5=1G4, Tm6=1D2, Tm7=1I6, Tm8=3P2. G(t)=sigma_exc*Phi(t) is the pump rate per ground-state ion.
-    // ---- 3H5 and 3F2,3 are omitted: they neither feed nor are fed by any observed channel here.
-    // ---- Cross-relaxation (W_CR) is omitted because Tm <= 0.05 mol%; add it for Tm >= ~0.5 mol%.
-    "260": {
-        excitation_label: "260 nm (³H₆ → ³P₂) UV GSA",
-        description: "Single-photon UV excitation into ³P₂. ³P₂ relaxes very fast (W_NR,87 is the largest rate) into ¹I₆, which emits at 346 nm (¹I₆ → ³F₄). ¹D₂, ¹G₄ and ³H₄ are reached only through the slow ¹I₆ → ¹D₂ multiphonon step, so 454/645/775 nm are delayed and weak. No ESA/ETU terms (one photon, low Tm).",
-        states: {
-            "Tm8": {
-                latex: "\\frac{dTm_8}{dt} = G(t) \\cdot Tm_0 - W_{NR,87} \\cdot Tm_8",
-                label: "³P₂",
-                population: ["G(t) · Tm₀ (260 nm absorption, pulse width t_p)"],
-                depopulation: ["W_NR,87 · Tm₈ (fast multiphonon to ¹I₆)"]
-            },
-            "Tm7": {
-                latex: "\\frac{dTm_7}{dt} = W_{NR,87} \\cdot Tm_8 - (A_{70} + A_{71} + W_{NR,76}) \\cdot Tm_7",
-                label: "¹I₆",
-                observable: "346 nm: I₃₄₆ ∝ A₇₁ · Tm₇ (¹I₆ → ³F₄)",
-                population: ["W_NR,87 · Tm₈"],
-                depopulation: ["A₇₀ · Tm₇ (→ ³H₆)", "A₇₁ · Tm₇ (346 nm → ³F₄)", "W_NR,76 · Tm₇ (→ ¹D₂)"]
-            },
-            "Tm6": {
-                latex: "\\frac{dTm_6}{dt} = W_{NR,76} \\cdot Tm_7 - (A_{60} + A_{61} + A_{63} + W_{NR,65}) \\cdot Tm_6",
-                label: "¹D₂",
-                observable: "454 nm: I₄₅₄ ∝ A₆₁ · Tm₆ (¹D₂ → ³F₄) | 362 nm: I₃₆₂ ∝ A₆₀ · Tm₆",
-                population: ["W_NR,76 · Tm₇"],
-                depopulation: ["A₆₀ · Tm₆", "A₆₁ · Tm₆", "A₆₃ · Tm₆ (→ ³H₄)", "W_NR,65 · Tm₆ (→ ¹G₄)"]
-            },
-            "Tm5": {
-                latex: "\\frac{dTm_5}{dt} = W_{NR,65} \\cdot Tm_6 - (A_{50} + A_{51} + A_{53}) \\cdot Tm_5",
-                label: "¹G₄",
-                observable: "477 nm: I₄₇₇ ∝ A₅₀ · Tm₅ | 645 nm: I₆₄₅ ∝ A₅₁ · Tm₅",
-                population: ["W_NR,65 · Tm₆"],
-                depopulation: ["A₅₀ · Tm₅", "A₅₁ · Tm₅", "A₅₃ · Tm₅ (→ ³H₄)"]
-            },
-            "Tm3": {
-                latex: "\\frac{dTm_3}{dt} = A_{53} \\cdot Tm_5 + A_{63} \\cdot Tm_6 - (A_{30} + A_{31}) \\cdot Tm_3",
-                label: "³H₄",
-                observable: "775 nm: I₇₇₅ ∝ A₃₀ · Tm₃",
-                population: ["A₅₃ · Tm₅", "A₆₃ · Tm₆"],
-                depopulation: ["A₃₀ · Tm₃ (775 nm)", "A₃₁ · Tm₃ (→ ³F₄)"]
-            },
-            "Tm1": {
-                latex: "\\frac{dTm_1}{dt} = A_{31} \\cdot Tm_3 + A_{51} \\cdot Tm_5 + A_{61} \\cdot Tm_6 + A_{71} \\cdot Tm_7 - A_{10} \\cdot Tm_1",
-                label: "³F₄",
-                observable: "1800 nm: I₁₈₀₀ ∝ A₁₀ · Tm₁",
-                population: ["A₃₁ · Tm₃", "A₅₁ · Tm₅", "A₆₁ · Tm₆", "A₇₁ · Tm₇"],
-                depopulation: ["A₁₀ · Tm₁"]
-            },
-            "Tm0": {
-                latex: "\\frac{dTm_0}{dt} = -G(t) \\cdot Tm_0 + A_{10} Tm_1 + A_{30} Tm_3 + A_{50} Tm_5 + A_{60} Tm_6 + A_{70} Tm_7",
-                label: "³H₆ (ground)",
-                population: ["A₁₀·Tm₁ + A₃₀·Tm₃ + A₅₀·Tm₅ + A₆₀·Tm₆ + A₇₀·Tm₇ (radiative returns)"],
-                depopulation: ["G(t) · Tm₀ (260 nm absorption)"]
+            if (esa && lv.n === esa) {
+                rhs += " + G_2\\, Tm_" + entry;
+                pop.push("G₂ · Tm" + SUB[entry] + " (ESA from " + LABEL[entry] + ")");
             }
-        },
-        parameters: {
-            "G(t)": "σ_exc·Φ(t) for 0 ≤ t ≤ t_p (pulse width), 0 afterwards (s⁻¹ per ground-state ion)",
-            "W_NR,87": "Multiphonon ³P₂ → ¹I₆ (s⁻¹), much larger than every other rate",
-            "W_NR,76": "Multiphonon ¹I₆ → ¹D₂ (s⁻¹), slow in fluorides (large gap)",
-            "W_NR,65": "Multiphonon ¹D₂ → ¹G₄ (s⁻¹), slow in fluorides (large gap)",
-            "A_ij": "Radiative rate from level i to level j (s⁻¹)"
-        }
-    },
-    "356": {
-        excitation_label: "356 nm (³H₆ → ¹D₂) direct GSA",
-        description: "Direct single-photon excitation into ¹D₂. 454 nm (¹D₂ → ³F₄) follows ¹D₂ directly: a rise limited by pulse/IRF, then decay at (A₆₀+A₆₁+A₆₃+W_NR,65)⁻¹. 775 nm (³H₄ → ³H₆) is fed only through ¹D₂ → ³H₄ branching and the ¹G₄ relay, so it shows a delayed rise and decays with the slower of the feeder and ³H₄ lifetimes.",
-        states: {
-            "Tm6": {
-                latex: "\\frac{dTm_6}{dt} = G(t) \\cdot Tm_0 - (A_{60} + A_{61} + A_{63} + W_{NR,65}) \\cdot Tm_6",
-                label: "¹D₂",
-                observable: "454 nm: I₄₅₄ ∝ A₆₁ · Tm₆ (¹D₂ → ³F₄) | 362 nm: I₃₆₂ ∝ A₆₀ · Tm₆",
-                population: ["G(t) · Tm₀ (356 nm absorption, pulse width t_p)"],
-                depopulation: ["A₆₀ · Tm₆", "A₆₁ · Tm₆ (454 nm)", "A₆₃ · Tm₆ (→ ³H₄)", "W_NR,65 · Tm₆ (→ ¹G₄)"]
-            },
-            "Tm5": {
-                latex: "\\frac{dTm_5}{dt} = W_{NR,65} \\cdot Tm_6 - (A_{50} + A_{51} + A_{53}) \\cdot Tm_5",
-                label: "¹G₄",
-                observable: "477 nm: I₄₇₇ ∝ A₅₀ · Tm₅ | 645 nm: I₆₄₅ ∝ A₅₁ · Tm₅",
-                population: ["W_NR,65 · Tm₆"],
-                depopulation: ["A₅₀ · Tm₅", "A₅₁ · Tm₅", "A₅₃ · Tm₅ (→ ³H₄)"]
-            },
-            "Tm3": {
-                latex: "\\frac{dTm_3}{dt} = A_{53} \\cdot Tm_5 + A_{63} \\cdot Tm_6 - (A_{30} + A_{31}) \\cdot Tm_3",
-                label: "³H₄",
-                observable: "775 nm: I₇₇₅ ∝ A₃₀ · Tm₃",
-                population: ["A₅₃ · Tm₅", "A₆₃ · Tm₆"],
-                depopulation: ["A₃₀ · Tm₃ (775 nm)", "A₃₁ · Tm₃ (→ ³F₄)"]
-            },
-            "Tm1": {
-                latex: "\\frac{dTm_1}{dt} = A_{31} \\cdot Tm_3 + A_{51} \\cdot Tm_5 + A_{61} \\cdot Tm_6 - A_{10} \\cdot Tm_1",
-                label: "³F₄",
-                observable: "1800 nm: I₁₈₀₀ ∝ A₁₀ · Tm₁",
-                population: ["A₃₁ · Tm₃", "A₅₁ · Tm₅", "A₆₁ · Tm₆"],
-                depopulation: ["A₁₀ · Tm₁"]
-            },
-            "Tm0": {
-                latex: "\\frac{dTm_0}{dt} = -G(t) \\cdot Tm_0 + A_{10} Tm_1 + A_{30} Tm_3 + A_{50} Tm_5 + A_{60} Tm_6",
-                label: "³H₆ (ground)",
-                population: ["A₁₀·Tm₁ + A₃₀·Tm₃ + A₅₀·Tm₅ + A₆₀·Tm₆ (radiative returns)"],
-                depopulation: ["G(t) · Tm₀ (356 nm absorption)"]
-            }
-        },
-        parameters: {
-            "G(t)": "σ_exc·Φ(t) for 0 ≤ t ≤ t_p (pulse width), 0 afterwards (s⁻¹ per ground-state ion)",
-            "W_NR,65": "Multiphonon ¹D₂ → ¹G₄ (s⁻¹), slow in fluorides (large gap)",
-            "A_ij": "Radiative rate from level i to level j (s⁻¹)"
-        }
-    },
-    "466": {
-        excitation_label: "466 nm (³H₆ → ¹G₄) direct GSA",
-        description: "Direct single-photon excitation into ¹G₄. 645 nm (¹G₄ → ³F₄) and 477 nm (¹G₄ → ³H₆) follow ¹G₄ directly, so the 645 nm trace is a pulse-limited rise followed by a single-exponential decay at (A₅₀+A₅₁+A₅₃)⁻¹. ³H₄ (775 nm) is fed only by the weak ¹G₄ → ³H₄ branch. If the sample also contains Yb³⁺, Tm → Yb transfer is an extra loss channel that these single-doped equations do not include.",
-        states: {
-            "Tm5": {
-                latex: "\\frac{dTm_5}{dt} = G(t) \\cdot Tm_0 - (A_{50} + A_{51} + A_{53}) \\cdot Tm_5",
-                label: "¹G₄",
-                observable: "645 nm: I₆₄₅ ∝ A₅₁ · Tm₅ (¹G₄ → ³F₄) | 477 nm: I₄₇₇ ∝ A₅₀ · Tm₅",
-                population: ["G(t) · Tm₀ (466 nm absorption, pulse width t_p)"],
-                depopulation: ["A₅₀ · Tm₅ (477 nm)", "A₅₁ · Tm₅ (645 nm)", "A₅₃ · Tm₅ (→ ³H₄)"]
-            },
-            "Tm3": {
-                latex: "\\frac{dTm_3}{dt} = A_{53} \\cdot Tm_5 - (A_{30} + A_{31}) \\cdot Tm_3",
-                label: "³H₄",
-                observable: "775 nm: I₇₇₅ ∝ A₃₀ · Tm₃",
-                population: ["A₅₃ · Tm₅"],
-                depopulation: ["A₃₀ · Tm₃ (775 nm)", "A₃₁ · Tm₃ (→ ³F₄)"]
-            },
-            "Tm1": {
-                latex: "\\frac{dTm_1}{dt} = A_{31} \\cdot Tm_3 + A_{51} \\cdot Tm_5 - A_{10} \\cdot Tm_1",
-                label: "³F₄",
-                observable: "1800 nm: I₁₈₀₀ ∝ A₁₀ · Tm₁",
-                population: ["A₃₁ · Tm₃", "A₅₁ · Tm₅"],
-                depopulation: ["A₁₀ · Tm₁"]
-            },
-            "Tm0": {
-                latex: "\\frac{dTm_0}{dt} = -G(t) \\cdot Tm_0 + A_{10} Tm_1 + A_{30} Tm_3 + A_{50} Tm_5",
-                label: "³H₆ (ground)",
-                population: ["A₁₀·Tm₁ + A₃₀·Tm₃ + A₅₀·Tm₅ (radiative returns)"],
-                depopulation: ["G(t) · Tm₀ (466 nm absorption)"]
-            }
-        },
-        parameters: {
-            "G(t)": "σ_exc·Φ(t) for 0 ≤ t ≤ t_p (pulse width), 0 afterwards (s⁻¹ per ground-state ion)",
-            "A_ij": "Radiative rate from level i to level j (s⁻¹)"
-        }
-    }
-};
+            states[lv.key] = {
+                latex: "\\frac{dTm_" + lv.n + "}{dt} = " + rhs,
+                label: lv.label,
+                population: pop,
+                depopulation: dep,
+            };
+            if (lv.observable) states[lv.key].observable = lv.observable;
+        });
+        const params = {
+            "G": "Effective pump rate while the pulse is on (ms⁻¹)",
+            "t_p": "Rectangular pulse width (ms)",
+            "A_ij": "Radiative rate from level i to level j (ms⁻¹)",
+            "W_87, W_76, W_65": "Non-radiative steps ³P₂→¹I₆, ¹I₆→¹D₂, ¹D₂→¹G₄ (ms⁻¹)",
+            "K_cr": "Cross-relaxation coefficient; W_cr = K_cr · [Tm mol%]",
+            "K_cr,H4": "Separate ³H₄ + ³H₆ → 2 ³F₄ cross-relaxation coefficient (active at or above 1.0 mol% Tm)",
+            "K_cr,G4": "Separate ¹G₄ + ³H₆ → ³H₄ + ³F₄ cross-relaxation coefficient (active above 0.1 mol% Tm)",
+            "K_yb": "Tm→Yb back-transfer coefficient (active above 10 mol% Yb)",
+        };
+        if (esa) params["G₂"] = "Effective excited-state-absorption rate while the pulse is on (ms⁻¹)";
+        return { excitation_label: label, description: text + " " + common, states, parameters: params };
+    };
+
+    return {
+        "260": build("260 nm (³H₆ → ³P₂) UV GSA", 8, null,
+            "The pump enters ³P₂, which relaxes into ¹I₆ at W₈₇ (the largest rate). ¹D₂, ¹G₄ and ³H₄ are reached through the slower W₇₆, W₆₅ and A₆₃/A₅₃ steps."),
+        "356": build("356 nm (³H₆ → ¹D₂) direct GSA", 6, null,
+            "The pump enters ¹D₂. ¹G₄ is fed by W₆₅ and ³H₄ by A₆₃ and A₅₃."),
+        "466": build("466 nm (³H₆ → ¹G₄) direct GSA", 5, null,
+            "The pump enters ¹G₄. ³H₄ is fed only by the weak A₅₃ branch."),
+        "690": build("690 nm (→ ³H₄, ESA ³H₄ → ¹D₂)", 3, 6,
+            "The solver enters ³H₄ directly (³F₂,₃ is not tracked) and adds an effective ESA step G₂ from ³H₄ to ¹D₂."),
+        "785": build("785 nm (³H₆ → ³H₄) GSA, ESA ³H₄ → ¹G₄", 3, 5,
+            "Ground-state absorption into ³H₄ plus an effective ESA step G₂ from ³H₄ to ¹G₄."),
+        "1210": build("1210 nm (→ ³H₄, ESA ³H₄ → ¹G₄)", 3, 5,
+            "The solver enters ³H₄ directly (³H₅ and ³F₂,₃ are not tracked) and adds an effective ESA step G₂ from ³H₄ to ¹G₄."),
+    };
+})();
 
 // --- 2d-iii. UC Mechanism ODE Databases ---
 // ODEs for each non-ETUC upconversion mechanism
@@ -2018,6 +1847,11 @@ window.clearAllDepositedPlots = function() {
 };
 
 function depositCurrentRun(fileName, payload, fitRes, time, measured, fitted, resultsHtml, extraFlags) {
+    if (fitRes && fitRes.literature_accepted === false) {
+        const bad = Object.entries(fitRes.literature_violations || {}).map(([k, v]) => `${k}=${Number(v.value).toPrecision(4)} (allowed ${v.min}–${v.max})`).join(", ");
+        showStatus("warning", `Fit rejected and not recorded: parameter(s) outside literature range: ${bad}`);
+        return;
+    }
     const entry = {
         fileName: fileName || 'Unknown file',
         createdAt: new Date().toISOString(),
@@ -2221,6 +2055,19 @@ function parseCSVContent(content) {
     return { time, intensity, metadata };
 }
 
+// Windows hands over 8.3 aliases (e.g. YF1F50~1.CSV) when the long name cannot be used; the long name is then
+// only recoverable if the file itself repeats it in its header.
+function isShortAliasName(name) { return /~\d+\.[A-Za-z0-9]{1,4}$/.test(String(name || '')); }
+function resolveFullFileName(name, metadata) {
+    if (!isShortAliasName(name)) return { name, recovered: false, alias: false };
+    const cands = [];
+    Object.entries(metadata || {}).forEach(([k, v]) => { cands.push(String(k), String(v)); });
+    const hit = cands.map(s => s.trim()).filter(s => s.length > name.length && /Freq_|Lifetime|Stop\d|\.csv$/i.test(s))
+        .sort((a, b) => b.length - a.length)[0];
+    if (!hit) return { name, recovered: false, alias: true };
+    return { name: /\.csv$/i.test(hit) ? hit : hit + '.csv', recovered: true, alias: true };
+}
+
 function parseJSONContent(content) {
     const data = JSON.parse(content);
     let time, intensity;
@@ -2392,7 +2239,9 @@ function initializeFileUploadHandlers() {
                     const folder = multiChannelFolders.find(item => item.id === folderId) || getActiveMultiChannelFolder();
                     const state = folder?.slotState?.[slotId];
                     if (!state) return;
-                    state.fileName = targetFile.name;
+                    const fullName = resolveFullFileName(targetFile.name, parsed.metadata);
+                    if (fullName.alias && !fullName.recovered) showStatus('warning', `${targetFile.name} is a Windows short alias; the full file name is not available to the browser. Re-upload it from a folder where the long name is intact.`);
+                    state.fileName = fullName.name;
                     state.data = parsed;
                     state.metadata = parsed.metadata || {};
                     if (folder?.id && folder.id !== activeMultiChannelFolderId) {
@@ -2404,7 +2253,7 @@ function initializeFileUploadHandlers() {
                     renderMultiChannelFolderQueue();
                     refreshSidebarFileCount();
                     previewMultiChannelSlot(slotId);
-                    showStatus('success', `✓ Loaded ${targetFile.name} for ${state.emission} nm in ${folder?.name || 'active folder'}.`);
+                    showStatus('success', `✓ Loaded ${fullName.name} for ${state.emission} nm in ${folder?.name || 'active folder'}.`);
                 } catch (err) {
                     console.error('Error processing multi-channel file:', err);
                     showStatus('error', `✗ Error loading ${targetFile.name}: ${err.message}`);
@@ -2444,6 +2293,37 @@ function plotRawData() {
 }
 
 // ==================== 17. PHYSICS FUNCTIONS ====================
+// Keep only the ODE terms that are active for the entered Yb/Tm concentrations
+// (same gates as UCOdeModel.system: WcrG4 Tm>0.1, Wcr Tm>=1.0, Wb Yb>10).
+function gateOdeByConcentration(odeData) {
+    if (!odeData) return odeData;
+    const tm = parseFloat(safeGetElement('dopingTmInput')?.value);
+    const yb = parseFloat(safeGetElement('dopingYbInput')?.value);
+    if (!isFinite(tm) && !isFinite(yb)) return odeData;
+    const off = [];
+    if (isFinite(tm) && !(tm > 0.1)) off.push('WcrG4');
+    if (isFinite(tm) && !(tm >= 1.0)) off.push('Wcr');
+    if (isFinite(yb) && !(yb > 10.0)) off.push('Wb');
+    if (!off.length) return odeData;
+    const latexName = { WcrG4: 'W_\\{cr,G4\\}', Wcr: 'W_\\{cr,H4\\}', Wb: 'W_b' };
+    let latex = odeData.latex;
+    off.forEach(n => {
+        latex = latex.replace(new RegExp('\\s[+-]\\s' + latexName[n] + '\\s\\\\cdot[^+-]*?(?=\\s[+-]\\s|$)', 'g'), '');
+    });
+    const keep = s => !off.some(n => new RegExp('^(r[₁₂]\\s=\\s|r_BET\\s=\\s)?' + (n === 'Wcr' ? 'Wcr,H4' : n) + '\\s·').test(s));
+    return {
+        ...odeData,
+        latex,
+        population: odeData.population.filter(keep),
+        depopulation: odeData.depopulation.filter(keep)
+    };
+}
+
+['dopingTmInput', 'dopingYbInput'].forEach(id => {
+    document.addEventListener('input', e => {
+        if (e.target && e.target.id === id && typeof window.updateActivePhysics === 'function') window.updateActivePhysics();
+    });
+});
 window.updateActivePhysics = function() {
     const emission = safeGetElement('emissionSelect')?.value;
     if (!emission) return;
@@ -2458,7 +2338,7 @@ window.updateActivePhysics = function() {
         if (typeof MathJax !== 'undefined') MathJax.typesetPromise([safeGetElement('math-ode')]).catch(err => console.log('MathJax error:', err));
         return;
     }
-    const odeData = odeDatabase[emission];
+    const odeData = gateOdeByConcentration(odeDatabase[emission]);
     if (!odeData) return;
     
     safeSetText('math-ode', '$$' + odeData.latex + '$$');
@@ -2715,7 +2595,7 @@ function buildMultiChannelFitSequence(slotState = multiChannelSlotState) {
 
         const fallbackSource = fallbackSourceByTarget[emission];
         const fallbackEntry = fallbackSource ? emissionToSlot[fallbackSource] : null;
-        if (fallbackEntry) {
+        if (fallbackEntry && MULTI_CHANNEL_MANDATORY.has(emission)) {
             sequence.push({
                 emission,
                 slotId: fallbackEntry.slotId,
@@ -2732,6 +2612,19 @@ function buildMultiChannelFitSequence(slotState = multiChannelSlotState) {
                 throw new Error('Multi-channel mode requires a 775 nm file to start the sequence.');
             }
             break;
+        }
+    }
+
+    for (const [em, entry] of Object.entries(emissionToSlot)) {
+        if (!sequence.some(s => s.emission === em)) {
+            sequence.push({
+                emission: em,
+                slotId: entry.slotId,
+                fileName: entry.fileName,
+                data: entry.data,
+                sourceEmission: em,
+                usedFallbackSource: false,
+            });
         }
     }
 
@@ -2938,19 +2831,21 @@ window.updateSingleTmOdeDisplay = function() {
       <div style="font-size:9px;font-weight:600;color:#1e293b;">${key} — ${st.label}</div>
       <div style="font-size:12px;">\\(${st.latex}\\)</div>
       ${st.observable ? `<div style="font-size:9px;color:#059669;">📍 ${st.observable}</div>` : ''}</div>`;
-  const entries = Object.entries(db.states);
+  // Levels below the excitation entry can be populated; those above it stay empty, so they are not listed.
+  const reachKeys = new Set(casc.filter((l, i) => i >= top).map(l => SINGLE_TM_TMKEY[l]));
+  const entries = Object.entries(db.states).filter(([k]) => k === 'Tm0' || reachKeys.has(k));
   if (relKeys.size) {
     html += `<div style="font-size:9px;color:#059669;margin-bottom:4px;">Pathways that shape the ${emNm} nm trace:</div>`
       + entries.filter(([k]) => relKeys.has(k)).map(([k, s]) => card(k, s)).join('');
     const rest = entries.filter(([k]) => !relKeys.has(k));
-    if (rest.length) html += `<details style="margin-top:4px;"><summary style="font-size:9px;color:#6b7280;cursor:pointer;">Other levels in the cascade (do not affect this fit)</summary>`
+    if (rest.length) html += `<details style="margin-top:4px;"><summary style="font-size:9px;color:#6b7280;cursor:pointer;">Other populated levels (not on the path to the selected emission)</summary>`
       + rest.map(([k, s]) => card(k, s)).join('') + '</details>';
   } else {
     html += entries.map(([k, s]) => card(k, s)).join('');
   }
   eqDiv.innerHTML = html;
   if (emDiv) emDiv.innerHTML = '<strong>Observable emissions:</strong><br>' +
-    Object.values(db.states).filter(s => s.observable).map(s => '• ' + s.observable).join('<br>');
+    Object.entries(db.states).filter(([k, s]) => s.observable && reachKeys.has(k)).map(([, s]) => '• ' + s.observable).join('<br>');
   if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([eqDiv]);
 };
 
@@ -3385,14 +3280,16 @@ window.applyPhysicsSettings = function() {
         }
         
         // Show success message
-        statusDiv.textContent = `✓ Configuration complete | Model: ${data.model_selected || 'multilevel_ode'} | W_CR: ${data.w_cr_active ? 'Active' : 'Inactive'}`;
+        statusDiv.textContent = `✓ Configuration complete | Model: ${data.model_selected || 'multilevel_ode'} | CR G4: ${data.w_cr_g4_active ? 'Active (>0.1% Tm)' : 'Inactive (≤0.1% Tm)'} | CR H4: ${data.w_cr_h4_active ? 'Active (≥1.0% Tm)' : 'Inactive (<1.0% Tm)'} | BT: ${data.w_b_active ? 'Active (>10% Yb)' : 'Inactive (≤10% Yb)'}`;
         statusDiv.style.color = '#4ade80';
         
         // Show model info in console
         console.log(`📊 Model selected: ${data.model_selected}`);
         console.log(`📊 Regime: ${data.regime}`);
         console.log(`📊 W_ET upper bound: ${data.w_et_upper} ms⁻¹`);
-        console.log(`📊 Cross-relaxation: ${data.w_cr_active ? 'Active' : 'Inactive'}`);
+        console.log(`📊 ¹G₄ cross-relaxation: ${data.w_cr_g4_active ? 'Active (>0.1% Tm)' : 'Inactive (≤0.1% Tm)'}`);
+        console.log(`📊 ³H₄ cross-relaxation: ${data.w_cr_h4_active ? 'Active (≥1.0% Tm)' : 'Inactive (<1.0% Tm)'}`);
+        console.log(`📊 Tm→Yb back-transfer: ${data.w_b_active ? 'Active (>10% Yb)' : 'Inactive (≤10% Yb)'}`);
         console.log(`📊 Time scale factor: ${data.time_scale_factor}`);
         
         // Reset border colors
@@ -4278,6 +4175,7 @@ window.fitData = async function(options = {}) {
                 A81: parseFloat(safeGetElement('lit_A81')?.value || '2.0'),
                 Wcr: parseFloat(safeGetElement('lit_Wcr')?.value || '5.0'),
                 Wb: parseFloat(safeGetElement('lit_Wb')?.value || '0.5'),
+                WcrG4: parseFloat(safeGetElement('lit_WcrG4')?.value || '5.0'),
             },
             excitation_wavelength: parseFloat(safeGetElement('excitationWavelength')?.value || '980'),
             smoothing_window: parseInt(safeGetElement('smoothingWindow')?.value || '5', 10),
@@ -5190,7 +5088,8 @@ window.downloadAllResultsExcel = async function() {
         plotDeposits.forEach(dep => {
             Object.keys(dep.ode_parameters || {}).forEach(k => allParamKeys.add(k));
         });
-        const paramKeys = Array.from(allParamKeys).sort();
+        const canonicalOrder = ["Rp","Ay","W1","W2","W3","W4","W5","k21","k35","A10","A50","A60","A61","A70","A71","A80","A81","Wcr","Wb","WcrG4","T_offset"];
+        const paramKeys = Array.from(allParamKeys).sort((a, b) => { const ia = canonicalOrder.indexOf(a), ib = canonicalOrder.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b); });
 
         const paramsHeader = ['Run#', 'File', 'Emission (nm)', 'Best Fit', 'R²', ...paramKeys];
         const paramsRows   = [paramsHeader];
@@ -5460,13 +5359,16 @@ function renderSimEquationPanel(data, emissions, spacing) {
     panel.innerHTML = `
         <div style="font-weight:700; color:#0f172a; margin-bottom:6px;">Equations used in this simulation (ODE model)</div>
         <div style="font-family:'Courier New',monospace; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:8px;">
-            dYb_e/dt = R_p·Yb_g - A_y·Yb_e - Yb_e·(W1·Tm0 + W2·Tm1 + W3·Tm5 + W4·Tm6 + W5·Tm7) + W_b·Tm5·Yb_g<br>
-            dTm5/dt = W2·Yb_e·Tm1 - A50·Tm5 - Wcr·Tm5·Tm0 - W3·Yb_e·Tm5 - W_b·Tm5·Yb_g<br>
-            dTm6/dt = W3·Yb_e·Tm5 - (A60 + A61)·Tm6 - W4·Yb_e·Tm6<br>
+            dYb_e/dt = R_p·Yb_g - A_y·Yb_e - Yb_e·Σᵢ(Wᵢ·Tmᵢ) + W_b·Tm5·Yb_g [Tm &gt; 1.0%]<br>
+            dTm0/dt = … − Wcr,H4·Tm5·Tm0 − WcrG4·Tm6·Tm0 + W_b·Tm5·Yb_g<br>
+            dTm1/dt = … + 2·Wcr,H4·Tm5·Tm0 + WcrG4·Tm6·Tm0<br>
+            dTm5/dt = W2·Yb_e·Tm1 + WcrG4·Tm6·Tm0 - A50·Tm5 - W3·Yb_e·Tm5 - Wcr,H4·Tm5·Tm0 - W_b·Tm5·Yb_g<br>
+            dTm6/dt = W3·Yb_e·Tm5 - (A60 + A61)·Tm6 - W4·Yb_e·Tm6 - WcrG4·Tm6·Tm0<br>
             dTm7/dt = W4·Yb_e·Tm6 - (A70 + A71)·Tm7 - W5·Yb_e·Tm7<br>
             dTm8/dt = W5·Yb_e·Tm7 - A81·Tm8
         </div>
         <div style="font-size:11px; color:#334155; line-height:1.5;">
+            <strong>CR:</strong> WcrG4 models ¹G₄ + ³H₆ → ³H₄ + ³F₄ above 0.1 mol% Tm; Wcr,H4 models ³H₄ + ³H₆ → 2 ³F₄ at or above 1.0 mol% Tm. Back-transfer Wb is enabled above 10 mol% Yb.<br>
             <strong>Observables:</strong> I775∝Tm5, I477∝A60·Tm6, I645∝A61·Tm6, I362/I452∝Tm7, I345∝Tm8.<br>
             <strong>Influence inputs used:</strong> host=${inf.host_material ?? 'N/A'}, anneal=${inf.annealing_c ?? 'N/A'}°C, phonon=${inf.phonon_cm ?? 'N/A'} cm⁻¹, host mole factor=${inf.host_mole_factor ?? 'N/A'} (ref=5).<br>
             <strong>Combined scale factors:</strong> ET=${(inf.combined_et_factor ?? 1).toFixed ? inf.combined_et_factor.toFixed(3) : inf.combined_et_factor}, NR=${(inf.combined_nr_factor ?? 1).toFixed ? inf.combined_nr_factor.toFixed(3) : inf.combined_nr_factor}, RAD=${(inf.combined_rad_factor ?? 1).toFixed ? inf.combined_rad_factor.toFixed(3) : inf.combined_rad_factor}.<br>
@@ -5699,7 +5601,7 @@ window.runCompositionEstimate = function() {
         optimize_kinetics: optimizeKinetics,
         iterative_rounds: parseInt(safeGetElement('estIterRounds')?.value || '2', 10),
         de_maxiter: parseInt(safeGetElement('estDEMaxIter')?.value || '40', 10),
-        kinetics_to_optimize: ['W1', 'W2', 'W3', 'k21', 'k35', 'Wcr', 'Wb', 'A50', 'A60', 'A61'],
+        kinetics_to_optimize: ['W1', 'W2', 'W3', 'k21', 'k35', 'Wcr', 'WcrG4', 'Wb', 'A50', 'A60', 'A61'],
         lit_params: (window.lastFitResult && window.lastFitResult.lit_params) ? window.lastFitResult.lit_params : {},
     };
     safeSetText('simEstStatus', optimizeKinetics

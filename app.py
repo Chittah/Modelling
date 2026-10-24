@@ -130,27 +130,43 @@ def clear_fit_progress(fit_request_id):
 # SECTION 3 – PHYSICS ENGINE: UCOdeModel (11-state Yb³⁺/Tm³⁺ ODE system)
 # =============================================================================
 
+def _gate_cr_params(p, tm_pct):
+    """Zero cross-relaxation rates inactive at this Tm doping (Wcr: <1 mol%, WcrG4: <=0.1 mol%)."""
+    q = np.array(p, dtype=float, copy=True)
+    tm = float(tm_pct)
+    if tm < 1.0 - 1e-9:
+        q[17] = 0.0
+    if tm <= 0.1 + 1e-9:
+        q[19] = 0.0
+    return q
+
+
 class UCOdeModel:
     """11-state physics engine for Yb-Tm systems."""
     @staticmethod
     def system(t, y, params, p_width):
         (Rp, Ay, W1, W2, W3, W4, W5, k21, k35, A10, A50, A60, A61, A70, A71, A80, A81, Wcr, Wb) = params[:19]
+        WcrG4 = params[19] if len(params) > 19 else 0.0
+        tm_pct = params[20] if len(params) > 20 else 0.0
+        yb_pct = params[21] if len(params) > 21 else 0.0
         pump = Rp if t <= p_width else 0.0
         Yb_g, Yb_e, Tm0, Tm1, Tm2, Tm3, Tm4, Tm5, Tm6, Tm7, Tm8 = y
         
         et_sum = (W1*Tm0 + W2*Tm1 + W3*Tm5 + W4*Tm6 + W5*Tm7)
-        # Back energy transfer: Tm5(³H₄) + Yb_g → Tm0(³H₆) + Yb_e
-        bt = Wb * Tm5 * Yb_g
+        cr_h4 = Wcr * Tm5 * Tm0 if (Wcr != 0.0 and tm_pct >= 1.0 - 1e-9) else 0.0
+        cr_g4 = WcrG4 * Tm6 * Tm0 if (WcrG4 != 0.0 and tm_pct > 0.1 + 1e-9) else 0.0
+        # Back transfer: ³H₄ + Yb³⁺(²F₇/₂) → ³H₆ + Yb³⁺(²F₅/₂).
+        bt = Wb * Tm5 * Yb_g if yb_pct > 10.0 else 0.0
         dyb_g = -pump * Yb_g + Ay * Yb_e + Yb_e * et_sum - bt
         dyb_e =  pump * Yb_g - Ay * Yb_e - Yb_e * et_sum + bt
         
-        dtm0 = A10*Tm1 + A50*Tm5 + A60*Tm6 + A70*Tm7 - W1*Yb_e*Tm0 - Wcr*Tm5*Tm0 + bt
-        dtm1 = k21*Tm2 + A61*Tm6 + A71*Tm7 + A81*Tm8 + 2*Wcr*Tm5*Tm0 - A10*Tm1 - W2*Yb_e*Tm1
+        dtm0 = A10*Tm1 + A50*Tm5 + A60*Tm6 + A70*Tm7 - W1*Yb_e*Tm0 - cr_h4 - cr_g4 + bt
+        dtm1 = k21*Tm2 + A61*Tm6 + A71*Tm7 + A81*Tm8 + 2*cr_h4 + cr_g4 - A10*Tm1 - W2*Yb_e*Tm1
         dtm2 = W1*Yb_e*Tm0 - k21*Tm2
         dtm3 = W2*Yb_e*Tm1 - k35*Tm3
         dtm4 = 0
-        dtm5 = W2*Yb_e*Tm1 - A50*Tm5 - Wcr*Tm5*Tm0 - W3*Yb_e*Tm5 - bt
-        dtm6 = W3*Yb_e*Tm5 - (A60 + A61)*Tm6 - W4*Yb_e*Tm6
+        dtm5 = W2*Yb_e*Tm1 + cr_g4 - A50*Tm5 - W3*Yb_e*Tm5 - cr_h4 - bt
+        dtm6 = W3*Yb_e*Tm5 - (A60 + A61)*Tm6 - W4*Yb_e*Tm6 - cr_g4
         dtm7 = W4*Yb_e*Tm6 - (A70 + A71)*Tm7 - W5*Yb_e*Tm7
         dtm8 = W5*Yb_e*Tm7 - A81*Tm8  # Tm8 has no ground-state decay (A80≡0 for this system)
         return [dyb_g, dyb_e, dtm0, dtm1, dtm2, dtm3, dtm4, dtm5, dtm6, dtm7, dtm8]
@@ -234,17 +250,17 @@ def classify_parameter_roles(state_idx):
     """Classify fitted parameters by direct/indirect influence for the selected emission state."""
     all_params = [
         "Rp", "Ay", "W1", "W2", "W3", "W4", "W5", "k21", "k35",
-        "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "T_offset"
+        "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "WcrG4", "T_offset"
     ]
 
     # state_idx map in this model:
     # 3->Tm1, 7->Tm5, 8->Tm6, 9->Tm7, 10->Tm8
     # Rp and Ay are always included — they govern Yb_e dynamics that feed every state.
-    # Wb (back transfer) appears explicitly in dtm5 so is direct for 775 nm.
+    # Wb (back transfer) and WcrG4 (¹G₄→³H₄ CR) directly affect 775 nm.
     direct_map = {
         3:  {"Rp", "Ay", "W2", "A10", "k21", "A61", "A71", "A81", "Wcr"},
-        7:  {"Rp", "Ay", "W2", "A50", "W3", "Wcr", "Wb"},        # 775nm → dtm5
-        8:  {"Rp", "Ay", "W3", "A60", "A61", "W4"},               # 477/645nm → dtm6
+        7:  {"Rp", "Ay", "W2", "A50", "W3", "Wcr", "WcrG4", "Wb"},  # 775nm → dtm5
+        8:  {"Rp", "Ay", "W3", "A60", "A61", "W4", "WcrG4"},     # 477/645nm → dtm6
         9:  {"Rp", "Ay", "W4", "A70", "A71", "W5"},               # 452/362nm → dtm7
         10: {"Rp", "Ay", "W4", "W5", "A81"},               # 345nm → dtm8 (only A81; Tm8 has no ground-state decay)
     }
@@ -277,7 +293,7 @@ def classify_parameter_roles(state_idx):
 # =============================================================================
 
 def _default_kinetic_params():
-    """Return the default 20-element kinetic parameter array used for forward simulation."""
+    """Return the default kinetic parameter array used for forward simulation."""
     return np.array([
         5.0,   # Rp    – pump rate (ms^-1)
         1.0,   # Ay    – Yb spontaneous decay rate
@@ -298,17 +314,42 @@ def _default_kinetic_params():
         2.0,   # A81   – Tm8→Tm1 (345 nm)
         5.0,   # Wcr   – cross-relaxation
         0.5,   # Wb    – back energy transfer ³H₄→Yb
+        5.0,   # WcrG4 – ¹G₄ + ³H₆ → ³H₄ + ³F₄ cross-relaxation
         0.0,   # T_offset (ms)
     ], dtype=float)
 
 
 _SIM_PARAM_NAMES = [
     "Rp", "Ay", "W1", "W2", "W3", "W4", "W5", "k21", "k35",
-    "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "T_offset"
+    "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "WcrG4", "T_offset"
 ]
 
 # Row in solve_ivp sol.y for each emission channel (indexed directly from ODE state vector)
 _EMISSION_SOL_ROW = {"775": 7, "477": 8, "645": 8, "362": 9, "452": 9, "345": 10}
+
+# Physically plausible ranges (ms^-1) for Yb/Tm kinetic parameters in fluoride hosts.
+# Estimates outside these ranges are rejected and not recorded.
+LITERATURE_RANGES = {
+    "Ay": (0.2, 3.0),
+    "W1": (1e-4, 300.0), "W2": (1e-4, 300.0), "W3": (1e-4, 300.0),
+    "W4": (1e-4, 300.0), "W5": (1e-4, 300.0),
+    "k21": (10.0, 150.0), "k35": (5.0, 150.0),
+    "A10": (0.05, 2.0), "A50": (0.1, 10.0), "A60": (0.3, 30.0), "A61": (0.05, 10.0),
+    "A70": (0.1, 100.0), "A71": (0.05, 100.0), "A80": (0.1, 100.0), "A81": (0.1, 100.0),
+    "Wcr": (0.0, 150.0), "Wb": (0.0, 50.0), "WcrG4": (0.0, 150.0),
+}
+
+
+def literature_violations(params):
+    """Return {name: (value, lo, hi)} for parameters outside LITERATURE_RANGES."""
+    bad = {}
+    for name, val in (params or {}).items():
+        rng = LITERATURE_RANGES.get(name)
+        if rng is None or not isinstance(val, (int, float)):
+            continue
+        if not np.isfinite(val) or val < rng[0] - 1e-9 or val > rng[1] + 1e-9:
+            bad[name] = (float(val), rng[0], rng[1])
+    return bad
 
 _HOST_PHONON_ENERGY_CM = {
     "NaYF4": 350.0,
@@ -383,6 +424,7 @@ def _apply_host_annealing_influence(
     p[8] *= nr_factor   # k35
     p[17] *= nr_factor  # Wcr
     p[18] *= nr_factor  # Wb
+    p[19] *= nr_factor  # WcrG4
     # Radiative terms (and Yb intrinsic decay)
     p[1] *= rad_factor  # Ay
     p[9:17] *= rad_factor
@@ -440,6 +482,8 @@ def simulate_forward(
     dict  {emission_str: np.ndarray of normalized intensity (0–1)}
     """
     p_base = _default_kinetic_params() if params is None else np.asarray(params, dtype=float).copy()
+    if p_base.size == 20:
+        p_base = np.insert(p_base, 19, 5.0)
     p, _ = _apply_host_annealing_influence(
         p_base,
         host_material=host_material,
@@ -454,7 +498,7 @@ def simulate_forward(
     y0_sim = [yb_frac, 0.0, tm_frac, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
     t_arr = np.asarray(time_arr, dtype=float)
-    t_offset = float(p[19])
+    t_offset = float(p[_SIM_PARAM_NAMES.index("T_offset")])
     t_shifted = t_arr - t_offset
     mask = t_shifted >= 0.0
 
@@ -473,7 +517,7 @@ def simulate_forward(
             [0.0, t_end],
             y0_sim,
             t_eval=t_eval,
-            args=(p[:19], p_width_ms),
+            args=(np.append(_gate_cr_params(p[:20], tm_pct), [float(tm_pct), float(yb_pct)]), p_width_ms),
             method="Radau",
             rtol=1e-8,
             atol=1e-11,
@@ -644,6 +688,45 @@ def simulate_downshifting_trace(time_ms, params=None):
 # SECTION 6 – MAIN ODE FITTING ENGINE  (run_fitting)
 # =============================================================================
 
+_DE_OBJECTIVE = None
+
+
+def _de_worker(x):
+    return _DE_OBJECTIVE(x)
+
+
+def _run_differential_evolution_parallel(objective, bounds, **kwargs):
+    """Run differential_evolution across CPU cores.
+
+    The objective is a closure and cannot be pickled, so forked workers inherit it
+    through a module global. Falls back to a serial run if forking is unavailable.
+    """
+    global _DE_OBJECTIVE
+    import multiprocessing as mp
+    n_workers = max(1, (os.cpu_count() or 1))
+    try:
+        ctx = mp.get_context("fork")
+    except ValueError:
+        ctx = None
+    if ctx is None or n_workers < 2:
+        return differential_evolution(objective, bounds, **kwargs)
+
+    _DE_OBJECTIVE = objective
+    pool = ctx.Pool(processes=n_workers)
+    try:
+        return differential_evolution(
+            objective,
+            bounds,
+            workers=lambda _func, xs: pool.map(_de_worker, list(xs)),
+            updating="deferred",
+            **kwargs,
+        )
+    finally:
+        pool.close()
+        pool.join()
+        _DE_OBJECTIVE = None
+
+
 def run_fitting(time_ms, intensity, pulse_us,
                  state_idx, 
                  doping_yb, 
@@ -696,7 +779,7 @@ def run_fitting(time_ms, intensity, pulse_us,
     # ── Reduced parameter space: only optimise the direct params for this emission ──
     all_param_names = [
         "Rp", "Ay", "W1", "W2", "W3", "W4", "W5", "k21", "k35",
-        "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "T_offset"
+        "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "WcrG4", "T_offset"
     ]
     param_roles = classify_parameter_roles(state_idx)
     active_set = set(param_roles["direct"])          # always includes T_offset
@@ -704,12 +787,11 @@ def run_fitting(time_ms, intensity, pulse_us,
     guided_params_used = []
     # 477/645 depend strongly on the Tm5 feeder chain. Keeping these fixed can
     # cause broad/late peaks at higher Tm concentrations, so unlock them here.
-    # Wb (back-transfer) always included since it directly sets the Yb effective
-    # lifetime, which dominates the long-time tail visible in 477/645 nm.
+    # Wb can be fitted on 477/645 nm traces only when the Yb concentration gate is open.
     if emission_key_s in {"477", "645"}:
         # k35 (Tm3→Tm5) is the only path feeding Tm5 regardless of Tm concentration.
         # W1 (first ET step) is rate-limiting at low Yb since effective W1*Yb_e is halved.
-        feeder_params = {"W2", "A50", "Wcr", "Wb", "k35"}
+        feeder_params = {"W2", "A50", "Wcr", "WcrG4", "Wb", "k35"}
         if yb_pct < 7.0 or tm_pct < 0.3:
             feeder_params.add("W1")
         if tm_pct >= 0.8:
@@ -720,10 +802,10 @@ def run_fitting(time_ms, intensity, pulse_us,
     # 362/452 (Tm7 channels) are one step downstream of Tm6 and are sensitive to
     # upstream feeder terms; keep these adjustable to avoid severe underfitting.
     if emission_key_s in {"362", "452"}:
-        feeder_params = {"W3", "A60", "A61", "Wcr"}
+        feeder_params = {"W3", "A60", "A61", "Wcr", "WcrG4"}
         if tm_pct >= 0.8:
             feeder_params.update({"W2", "A50", "k35"})
-        if tm_pct >= 1.5:
+        if tm_pct > 1.0:
             feeder_params.update({"Wb"})
         active_set.update(feeder_params)
         guided_params_used = sorted(list(set(guided_params_used).union(feeder_params)))
@@ -731,7 +813,7 @@ def run_fitting(time_ms, intensity, pulse_us,
     # 345/347 (Tm8 channel) is a 5-photon process requiring the full cascade of
     # upstream ET rates unlocked.  A80 is excluded (Tm8 has no ground-state decay).
     if emission_key_s in {"345", "347"}:
-        feeder_params = {"W3", "W4", "A60", "A61", "A70", "A71", "Wcr"}
+        feeder_params = {"W3", "W4", "A60", "A61", "A70", "A71", "Wcr", "WcrG4"}
         if tm_pct >= 0.5:
             feeder_params.update({"W2", "A50", "k35", "Wb"})
         active_set.update(feeder_params)
@@ -742,6 +824,13 @@ def run_fitting(time_ms, intensity, pulse_us,
         guided_params = {"W1", "k21", "A10"}
         active_set.update(guided_params)
         guided_params_used = sorted(list(set(guided_params_used).union(guided_params)))
+
+    if tm_pct < 1.0:
+        active_set.discard("Wcr")
+    if tm_pct <= 0.1:
+        active_set.discard("WcrG4")
+    if yb_pct <= 10.0:
+        active_set.discard("Wb")
 
     active_indices = [i for i, n in enumerate(all_param_names) if n in active_set]
     fixed_param_names = [n for i, n in enumerate(all_param_names) if i not in active_indices]
@@ -768,6 +857,7 @@ def run_fitting(time_ms, intensity, pulse_us,
         2.0,   # A81   – Tm8→Tm1 (345 nm)
         5.0,   # Wcr   – cross-relaxation
         0.5,   # Wb    – back energy transfer Tm5(³H₄)→Yb_g→Yb_e
+        5.0,   # WcrG4 – ¹G₄ + ³H₆ → ³H₄ + ³F₄ cross-relaxation
         0.0,   # T_offset
     ], dtype=float)
 
@@ -778,7 +868,7 @@ def run_fitting(time_ms, intensity, pulse_us,
                 idx_p = all_param_names.index(name)
                 param_defaults[idx_p] = float(val)
 
-    all_bounds = [(1e-4, 150.0)] * 18 + [(0.0, 50.0)] + [(0.0, max_offset)]
+    all_bounds = [(1e-4, 150.0)] * 18 + [(0.0, 50.0), (1e-4, 150.0), (0.0, max_offset)]
     # At low Yb concentrations the effective pump rate Rp*Yb_g and ET rates Wi*Yb_e
     # are halved compared to 10% Yb, so the optimizer needs more room on Rp and W1-W3.
     if yb_pct < 7.0:
@@ -797,6 +887,10 @@ def run_fitting(time_ms, intensity, pulse_us,
         all_bounds[6]  = (all_bounds[6][0],  high_cap)   # W5
         if emission_key_s in {"345", "347"}:
             all_bounds[16] = (all_bounds[16][0], high_cap)  # A81 (Tm8→Tm1, 345 nm)
+    for i, n in enumerate(all_param_names):
+        if n in LITERATURE_RANGES:
+            lo, hi = LITERATURE_RANGES[n]
+            all_bounds[i] = (max(all_bounds[i][0], lo), min(all_bounds[i][1], hi))
     bounds_active = [all_bounds[i] for i in active_indices]
 
     # Fit pulse width as a nuisance parameter to absorb instrument/timing uncertainty.
@@ -922,7 +1016,7 @@ def run_fitting(time_ms, intensity, pulse_us,
     sqrt_tail_full = np.sqrt(tail_w_full)
 
     def simulate(params_all, p_width_ms, t_arr):
-        t_shifted = t_arr - params_all[19]   # T_offset is now at index 19
+        t_shifted = t_arr - params_all[20]   # T_offset is now at index 20
         mask = t_shifted >= 0
         if not np.any(mask):
             return None, None
@@ -934,7 +1028,7 @@ def run_fitting(time_ms, intensity, pulse_us,
                 [0, float(np.max(t_shifted))],
                 y0,
                 t_eval=t_eval,
-                args=(params_all[:19], p_width_ms),  # pass physical params + fitted pulse width
+                args=(np.append(_gate_cr_params(params_all[:20], tm_pct), [tm_pct, yb_pct]), p_width_ms),
                 method="Radau",
                 rtol=1e-8,
                 atol=1e-11,
@@ -1210,7 +1304,7 @@ def run_fitting(time_ms, intensity, pulse_us,
     def de_cancel_callback(_xk, convergence=None):
         return bool(callable(cancel_checker) and cancel_checker())
 
-    res_global = differential_evolution(
+    res_global = _run_differential_evolution_parallel(
         objective,
         bounds_active,
         maxiter=cfg["de_maxiter"],
@@ -1794,25 +1888,7 @@ def solve_luminescence_simulation_flow(payload):
         raise ValueError("Time axis is empty")
 
     if model_system == "single_doped_tm":
-        s = payload.get("single_tm_params") or {}
-        y = simulate_single_doped_tm_trace(
-            t_ms,
-            tau_fast_ms=float(s.get("tau_fast_ms", 0.25)),
-            tau_slow_ms=float(s.get("tau_slow_ms", 1.5)),
-            mix_alpha=float(s.get("mix_alpha", 0.65)),
-            rise_ms=float(s.get("rise_ms", 0.05)),
-        )
-        return {
-            "ok": True,
-            "flow": {"luminescence_type": lum_type, "mechanism": up_mech, "material_model": model_system},
-            "time_ms": t_ms.tolist(),
-            "channels": {
-                str(payload.get("emission", "775")): {
-                    "intensity": y.tolist(),
-                    "metrics": compute_trace_metrics(t_ms, y),
-                }
-            },
-        }
+        raise ValueError("Only the Yb/Tm multilevel ODE (co_doped_yb_tm, upconversion, etuc) is supported; analytic surrogate traces are disabled so that results are always calculated from the ODE.")
 
     if lum_type == "upconversion" and up_mech == "etuc":
         emissions = payload.get("emissions")
@@ -1866,25 +1942,7 @@ def solve_luminescence_simulation_flow(payload):
             "influence_model": influence,
         }
 
-    mech_params = payload.get("mechanism_params") or {}
-    if lum_type == "upconversion":
-        y = simulate_upconversion_mechanism_trace(t_ms, mechanism=up_mech, params=mech_params)
-    elif lum_type == "downconversion":
-        y = simulate_downconversion_trace(t_ms, params=mech_params)
-    else:
-        y = simulate_downshifting_trace(t_ms, params=mech_params)
-
-    return {
-        "ok": True,
-        "flow": {"luminescence_type": lum_type, "mechanism": up_mech, "material_model": model_system},
-        "time_ms": t_ms.tolist(),
-        "channels": {
-            str(payload.get("emission", "477")): {
-                "intensity": y.tolist(),
-                "metrics": compute_trace_metrics(t_ms, y),
-            }
-        },
-    }
+    raise ValueError("Only the Yb/Tm multilevel ODE (co_doped_yb_tm, upconversion, etuc) is supported; analytic surrogate traces are disabled so that results are always calculated from the ODE.")
 
 
 def solve_luminescence_optimization_flow(payload):
@@ -1901,74 +1959,8 @@ def solve_luminescence_optimization_flow(payload):
     if model_system == "single_doped_tm":
         lum_type = "downshifting"
 
-    # Single-doped Tm has a dedicated optimizer.
-    if model_system == "single_doped_tm":
-        result = fit_single_doped_tm_trace(t_ms, i_meas)
-        return {
-            "ok": True,
-            "flow": {"luminescence_type": lum_type, "mechanism": up_mech, "material_model": model_system},
-            "time_ms": t_ms.tolist(),
-            **result,
-        }
+    raise ValueError("Only the Yb/Tm multilevel ODE (co_doped_yb_tm, upconversion, etuc) is supported; analytic surrogate traces are disabled so that results are always calculated from the ODE.")
 
-    # Non-ETUC flows currently optimize a compact surrogate parameter set.
-    mech_params = payload.get("mechanism_params") or {}
-
-    if lum_type == "upconversion":
-        mech_name = up_mech
-        sim_fun = lambda tt, p: simulate_upconversion_mechanism_trace(tt, mechanism=mech_name, params=p)
-    elif lum_type == "downconversion":
-        sim_fun = lambda tt, p: simulate_downconversion_trace(tt, params=p)
-    else:
-        sim_fun = lambda tt, p: simulate_downshifting_trace(tt, params=p)
-
-    x0 = np.array([
-        float(mech_params.get("tau_ms", 1.5)),
-        float(mech_params.get("rise_ms", 0.08)),
-        float(mech_params.get("amp", 1.0)),
-    ], dtype=float)
-    lb = np.array([0.05, 0.001, 0.10], dtype=float)
-    ub = np.array([12.0, 2.000, 5.00], dtype=float)
-
-    def residuals(x):
-        p = {"tau_ms": float(x[0]), "rise_ms": float(x[1]), "amp": float(x[2])}
-        yy = sim_fun(t_ms, p)
-        return i_meas - yy
-
-    res = least_squares(residuals, x0=x0, bounds=(lb, ub), method="trf", loss="soft_l1", max_nfev=700)
-    x = res.x if res.success else x0
-    p_best = {"tau_ms": float(x[0]), "rise_ms": float(x[1]), "amp": float(x[2])}
-    y_fit = sim_fun(t_ms, p_best)
-    sse = float(np.sum((i_meas - y_fit) ** 2))
-    denom = float(np.sum((i_meas - np.mean(i_meas)) ** 2) + 1e-12)
-    r2 = 1.0 - sse / denom
-
-    return {
-        "ok": True,
-        "flow": {"luminescence_type": lum_type, "mechanism": up_mech, "material_model": model_system},
-        "time_ms": t_ms.tolist(),
-        "measured_intensity": i_meas.tolist(),
-        "fitted_intensity": y_fit.tolist(),
-        "r2": float(r2),
-        "params": p_best,
-        "timing_metrics": {
-            "time_unit": "ms",
-            "measured": compute_trace_metrics(t_ms, i_meas),
-            "fitted": compute_trace_metrics(t_ms, y_fit),
-        },
-        "diagnostics": {
-            "success": bool(res.success),
-            "nfev": int(getattr(res, "nfev", 0) or 0),
-            "cost": float(getattr(res, "cost", 0.0) or 0.0),
-            "message": str(getattr(res, "message", "")),
-            "note": "Surrogate non-ETUC optimizer; ETUC still uses full multilevel ODE optimizer.",
-        },
-    }
-
-
-# =============================================================================
-# SECTION 9 – FLASK ROUTES
-# =============================================================================
 
 @app.route("/export_csv", methods=["POST"])
 def export_csv():
@@ -2453,9 +2445,13 @@ def fit():
 
         param_names = [
             "Rp", "Ay", "W1", "W2", "W3", "W4", "W5", "k21", "k35",
-            "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "T_offset"
+            "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "WcrG4", "T_offset"
         ]
         params_all = {name: float(val) for name, val in zip(param_names, best_params)}
+        # Report the rates the ODE actually used (inactive CR terms are zeroed).
+        _gated = _gate_cr_params(best_params[:20], fit_doping_tm)
+        params_all['Wcr'] = float(_gated[17])
+        params_all['WcrG4'] = float(_gated[19])
         all_units = {
             "Rp": "ms-1",
             "Ay": "ms-1",
@@ -2476,6 +2472,7 @@ def fit():
             "A81": "ms-1",
             "Wcr": "ms-1",
             "Wb":  "ms-1",
+            "WcrG4": "ms-1",
             "T_offset": "ms",
         }
 
@@ -2622,6 +2619,7 @@ def fit():
         direct_params = set(param_roles["direct"])  # already includes T_offset
         selected_params = {k: v for k, v in params_all.items() if k in direct_params}
         param_units = {k: v for k, v in all_units.items() if k in direct_params}
+        lit_violations = literature_violations(selected_params)
 
         # Extra guided parameters from 775 calibration stage (non-direct but informative for transfer).
         guided_names = [p for p in diag.get("guided_params", []) if p in params_all]
@@ -2642,11 +2640,14 @@ def fit():
             "params": {
                 "R_P": float(best_params[0]),
                 "W_ET1": float(best_params[2]),
-                "W_CR": float(best_params[17]),
+                "W_CR": params_all["Wcr"],
                 "Wb": float(best_params[18]),
-                "T_offset": float(best_params[19])
+                "W_CR_G4": params_all["WcrG4"],
+                "T_offset": float(best_params[20])
             },
             "ode_parameters": selected_params,
+            "literature_violations": {k: {"value": v[0], "min": v[1], "max": v[2]} for k, v in lit_violations.items()},
+            "literature_accepted": not lit_violations,
             "ode_parameter_units": param_units,
             "ode_parameter_time_base": "ms",
             "guide_parameters": guide_parameters,
@@ -2736,7 +2737,10 @@ def configure_physics():
         "model_selected": "multilevel_ode",
         "regime": regime,
         "w_et_upper": 150.0,
-        "w_cr_active": bool(physics_state.get("doping_tm", 0.0) > 0.0),
+        "w_cr_active": bool(physics_state.get("doping_tm", 0.0) > 0.1),
+        "w_cr_g4_active": bool(physics_state.get("doping_tm", 0.0) > 0.1),
+        "w_cr_h4_active": bool(physics_state.get("doping_tm", 0.0) >= 1.0),
+        "w_b_active": bool(physics_state.get("doping_yb", 0.0) > 10.0),
         "time_scale_factor": float(time_scale),
         "host": host,
         "phonon_energy_cm": phonon_energy_cm,
@@ -2949,7 +2953,7 @@ def estimate_composition_route():
             if name in _SIM_PARAM_NAMES:
                 params[_SIM_PARAM_NAMES.index(name)] = float(val)
 
-        candidate_kinetics = payload.get("kinetics_to_optimize") or ["W1", "W2", "W3", "k21", "k35", "Wcr", "Wb", "A50", "A60", "A61"]
+        candidate_kinetics = payload.get("kinetics_to_optimize") or ["W1", "W2", "W3", "k21", "k35", "Wcr", "WcrG4", "Wb", "A50", "A60", "A61"]
         kinetic_names = [
             str(k) for k in candidate_kinetics
             if str(k) in _SIM_PARAM_NAMES and str(k) not in {"T_offset", "Rp"}
@@ -3288,4 +3292,4 @@ load_weights()
 
 if __name__ == "__main__":
     # Ensure app.run uses 0.0.0.0 to allow access from local network if needed
-    app.run(host="0.0.0.0", port=5050, debug=True)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5050)), debug=True)

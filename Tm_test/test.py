@@ -35,9 +35,9 @@ physics_state = {
     "configured": False,
     "doping_yb": 10.0,
     "doping_tm": 0.1,
-    "time_scale": 1e-6,
+    "time_scale": 1.0,
     "model_type": "LINEAR_UC_MODEL",
-    "time_unit": "ns",
+    "time_unit": "ms",
     "fit_quality": "fast"
 }
 
@@ -135,22 +135,27 @@ class UCOdeModel:
     @staticmethod
     def system(t, y, params, p_width):
         (Rp, Ay, W1, W2, W3, W4, W5, k21, k35, A10, A50, A60, A61, A70, A71, A80, A81, Wcr, Wb) = params[:19]
+        WcrG4 = params[19] if len(params) > 19 else 0.0
+        tm_pct = params[20] if len(params) > 20 else 0.0
+        yb_pct = params[21] if len(params) > 21 else 0.0
         pump = Rp if t <= p_width else 0.0
         Yb_g, Yb_e, Tm0, Tm1, Tm2, Tm3, Tm4, Tm5, Tm6, Tm7, Tm8 = y
         
         et_sum = (W1*Tm0 + W2*Tm1 + W3*Tm5 + W4*Tm6 + W5*Tm7)
-        # Back energy transfer: Tm5(³H₄) + Yb_g → Tm0(³H₆) + Yb_e
-        bt = Wb * Tm5 * Yb_g
+        cr_h4 = Wcr * Tm5 * Tm0 if tm_pct >= 1.0 else 0.0
+        cr_g4 = WcrG4 * Tm6 * Tm0 if tm_pct > 0.1 else 0.0
+        # Back transfer: ³H₄ + Yb³⁺(²F₇/₂) → ³H₆ + Yb³⁺(²F₅/₂).
+        bt = Wb * Tm5 * Yb_g if yb_pct > 10.0 else 0.0
         dyb_g = -pump * Yb_g + Ay * Yb_e + Yb_e * et_sum - bt
         dyb_e =  pump * Yb_g - Ay * Yb_e - Yb_e * et_sum + bt
         
-        dtm0 = A10*Tm1 + A50*Tm5 + A60*Tm6 + A70*Tm7 - W1*Yb_e*Tm0 - Wcr*Tm5*Tm0 + bt
-        dtm1 = k21*Tm2 + A61*Tm6 + A71*Tm7 + A81*Tm8 + 2*Wcr*Tm5*Tm0 - A10*Tm1 - W2*Yb_e*Tm1
+        dtm0 = A10*Tm1 + A50*Tm5 + A60*Tm6 + A70*Tm7 - W1*Yb_e*Tm0 - cr_h4 - cr_g4 + bt
+        dtm1 = k21*Tm2 + A61*Tm6 + A71*Tm7 + A81*Tm8 + 2*cr_h4 + cr_g4 - A10*Tm1 - W2*Yb_e*Tm1
         dtm2 = W1*Yb_e*Tm0 - k21*Tm2
         dtm3 = W2*Yb_e*Tm1 - k35*Tm3
         dtm4 = 0
-        dtm5 = W2*Yb_e*Tm1 - A50*Tm5 - Wcr*Tm5*Tm0 - W3*Yb_e*Tm5 - bt
-        dtm6 = W3*Yb_e*Tm5 - (A60 + A61)*Tm6 - W4*Yb_e*Tm6
+        dtm5 = W2*Yb_e*Tm1 + cr_g4 - A50*Tm5 - W3*Yb_e*Tm5 - cr_h4 - bt
+        dtm6 = W3*Yb_e*Tm5 - (A60 + A61)*Tm6 - W4*Yb_e*Tm6 - cr_g4
         dtm7 = W4*Yb_e*Tm6 - (A70 + A71)*Tm7 - W5*Yb_e*Tm7
         dtm8 = W5*Yb_e*Tm7 - A81*Tm8  # Tm8 has no ground-state decay (A80≡0 for this system)
         return [dyb_g, dyb_e, dtm0, dtm1, dtm2, dtm3, dtm4, dtm5, dtm6, dtm7, dtm8]
@@ -234,17 +239,17 @@ def classify_parameter_roles(state_idx):
     """Classify fitted parameters by direct/indirect influence for the selected emission state."""
     all_params = [
         "Rp", "Ay", "W1", "W2", "W3", "W4", "W5", "k21", "k35",
-        "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "T_offset"
+        "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "WcrG4", "T_offset"
     ]
 
     # state_idx map in this model:
     # 3->Tm1, 7->Tm5, 8->Tm6, 9->Tm7, 10->Tm8
     # Rp and Ay are always included — they govern Yb_e dynamics that feed every state.
-    # Wb (back transfer) appears explicitly in dtm5 so is direct for 775 nm.
+    # Wb (back transfer) and WcrG4 (¹G₄→³H₄ CR) directly affect 775 nm.
     direct_map = {
         3:  {"Rp", "Ay", "W2", "A10", "k21", "A61", "A71", "A81", "Wcr"},
-        7:  {"Rp", "Ay", "W2", "A50", "W3", "Wcr", "Wb"},        # 775nm → dtm5
-        8:  {"Rp", "Ay", "W3", "A60", "A61", "W4"},               # 477/645nm → dtm6
+        7:  {"Rp", "Ay", "W2", "A50", "W3", "Wcr", "WcrG4", "Wb"},  # 775nm → dtm5
+        8:  {"Rp", "Ay", "W3", "A60", "A61", "W4", "WcrG4"},     # 477/645nm → dtm6
         9:  {"Rp", "Ay", "W4", "A70", "A71", "W5"},               # 452/362nm → dtm7
         10: {"Rp", "Ay", "W4", "W5", "A81"},               # 345nm → dtm8 (only A81; Tm8 has no ground-state decay)
     }
@@ -277,7 +282,7 @@ def classify_parameter_roles(state_idx):
 # =============================================================================
 
 def _default_kinetic_params():
-    """Return the default 20-element kinetic parameter array used for forward simulation."""
+    """Return the default kinetic parameter array used for forward simulation."""
     return np.array([
         5.0,   # Rp    – pump rate (ms^-1)
         1.0,   # Ay    – Yb spontaneous decay rate
@@ -298,17 +303,42 @@ def _default_kinetic_params():
         2.0,   # A81   – Tm8→Tm1 (345 nm)
         5.0,   # Wcr   – cross-relaxation
         0.5,   # Wb    – back energy transfer ³H₄→Yb
+        5.0,   # WcrG4 – ¹G₄ + ³H₆ → ³H₄ + ³F₄ cross-relaxation
         0.0,   # T_offset (ms)
     ], dtype=float)
 
 
 _SIM_PARAM_NAMES = [
     "Rp", "Ay", "W1", "W2", "W3", "W4", "W5", "k21", "k35",
-    "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "T_offset"
+    "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "WcrG4", "T_offset"
 ]
 
 # Row in solve_ivp sol.y for each emission channel (indexed directly from ODE state vector)
 _EMISSION_SOL_ROW = {"775": 7, "477": 8, "645": 8, "362": 9, "452": 9, "345": 10}
+
+# Physically plausible ranges (ms^-1) for Yb/Tm kinetic parameters in fluoride hosts.
+# Estimates outside these ranges are rejected and not recorded.
+LITERATURE_RANGES = {
+    "Ay": (0.2, 3.0),
+    "W1": (1e-4, 300.0), "W2": (1e-4, 300.0), "W3": (1e-4, 300.0),
+    "W4": (1e-4, 300.0), "W5": (1e-4, 300.0),
+    "k21": (10.0, 150.0), "k35": (5.0, 150.0),
+    "A10": (0.05, 2.0), "A50": (0.1, 10.0), "A60": (0.3, 30.0), "A61": (0.05, 10.0),
+    "A70": (0.1, 100.0), "A71": (0.05, 100.0), "A80": (0.1, 100.0), "A81": (0.1, 100.0),
+    "Wcr": (0.0, 150.0), "Wb": (0.0, 50.0), "WcrG4": (0.0, 150.0),
+}
+
+
+def literature_violations(params):
+    """Return {name: (value, lo, hi)} for parameters outside LITERATURE_RANGES."""
+    bad = {}
+    for name, val in (params or {}).items():
+        rng = LITERATURE_RANGES.get(name)
+        if rng is None or not isinstance(val, (int, float)):
+            continue
+        if not np.isfinite(val) or val < rng[0] - 1e-9 or val > rng[1] + 1e-9:
+            bad[name] = (float(val), rng[0], rng[1])
+    return bad
 
 _HOST_PHONON_ENERGY_CM = {
     "NaYF4": 350.0,
@@ -383,6 +413,7 @@ def _apply_host_annealing_influence(
     p[8] *= nr_factor   # k35
     p[17] *= nr_factor  # Wcr
     p[18] *= nr_factor  # Wb
+    p[19] *= nr_factor  # WcrG4
     # Radiative terms (and Yb intrinsic decay)
     p[1] *= rad_factor  # Ay
     p[9:17] *= rad_factor
@@ -440,6 +471,8 @@ def simulate_forward(
     dict  {emission_str: np.ndarray of normalized intensity (0–1)}
     """
     p_base = _default_kinetic_params() if params is None else np.asarray(params, dtype=float).copy()
+    if p_base.size == 20:
+        p_base = np.insert(p_base, 19, 5.0)
     p, _ = _apply_host_annealing_influence(
         p_base,
         host_material=host_material,
@@ -454,7 +487,7 @@ def simulate_forward(
     y0_sim = [yb_frac, 0.0, tm_frac, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
     t_arr = np.asarray(time_arr, dtype=float)
-    t_offset = float(p[19])
+    t_offset = float(p[_SIM_PARAM_NAMES.index("T_offset")])
     t_shifted = t_arr - t_offset
     mask = t_shifted >= 0.0
 
@@ -473,7 +506,7 @@ def simulate_forward(
             [0.0, t_end],
             y0_sim,
             t_eval=t_eval,
-            args=(p[:19], p_width_ms),
+            args=(np.append(p[:20], [float(tm_pct), float(yb_pct)]), p_width_ms),
             method="Radau",
             rtol=1e-8,
             atol=1e-11,
@@ -639,687 +672,7 @@ def simulate_downshifting_trace(time_ms, params=None):
         y /= mx
     return y
 
-# =============================================================================
-# SECTION 5b – SINGLE-DOPED Tm³⁺ ODE MODEL (direct excitation, optional Yb)
-# =============================================================================
-_ST_LEVELS = ["H6", "F4", "H4", "G4", "D2", "I6", "P2"]   # ³H₆ ³F₄ ³H₄ ¹G₄ ¹D₂ ¹I₆ ³P₂
-_ST_ORDER  = ["P2", "I6", "D2", "G4", "H4", "F4"]         # cascade, top -> bottom
-_ST_NAMES  = ["G", "G2", "A10", "A30", "A31", "A50", "A51", "A53", "A60", "A61", "A63",
-              "A70", "A71", "W87", "W76", "W65", "Kcr", "Kyb", "T_offset"]
-_ST_DEFAULTS = dict(G=20.0, G2=1.0, A10=0.12, A30=0.35, A31=0.25, A50=0.6, A51=0.5, A53=0.05,
-                    A60=1.0, A61=3.0, A63=0.3, A70=3.0, A71=4.0, W87=500.0, W76=1.0, W65=0.5,
-                    Kcr=2.0, Kyb=0.5, T_offset=0.0)
-_ST_BOUNDS = {"G": (0.05, 3000.0), "G2": (1e-3, 500.0), "W87": (5.0, 5000.0),
-              "W76": (1e-3, 300.0), "W65": (1e-3, 300.0), "Kcr": (1e-3, 200.0), "Kyb": (1e-3, 200.0)}
-# excitation (nm) -> entry level (+ ESA target for stepwise pumping)
-_ST_EXCITATION = {260: {"entry": "P2"}, 356: {"entry": "D2"}, 466: {"entry": "G4"},
-                  785: {"entry": "H4", "esa": "G4"}, 690: {"entry": "H4", "esa": "D2"},
-                  1210: {"entry": "H4", "esa": "G4"}}
-# emission (nm) -> (emitting level, radiative rate that defines the observable)
-_ST_OBS = {"346": ("I6", "A71"), "345": ("I6", "A71"), "362": ("D2", "A60"), "454": ("D2", "A61"),
-           "452": ("D2", "A61"), "477": ("G4", "A50"), "645": ("G4", "A51"),
-           "775": ("H4", "A30"), "1800": ("F4", "A10")}
-_ST_LEVEL_PARAMS = {"P2": ["W87"], "I6": ["A70", "A71", "W76"], "D2": ["A60", "A61", "A63", "W65"],
-                    "G4": ["A50", "A51", "A53"], "H4": ["A30", "A31"], "F4": ["A10"]}
-# Emissions offered per excitation (the measured channels; other excitations use level reachability only)
-_ST_ALLOWED_EMISSIONS = {260: {"346"}, 356: {"454", "775"}, 466: {"645"}}
-_ST_FEEDER = {"P2": ["W87"], "I6": ["W76"], "D2": ["W65", "A63"], "G4": ["A53"], "H4": ["A31"], "F4": []}
 
-
-def _st_resolve_excitation(nm, tol=10.0):
-    try:
-        nm = float(nm)
-    except (TypeError, ValueError):
-        return None, None
-    k = min(_ST_EXCITATION, key=lambda w: abs(w - nm))
-    return (k, _ST_EXCITATION[k]) if abs(k - nm) <= tol else (None, None)
-
-
-def _st_top_index(exc):
-    idx = [_ST_ORDER.index(exc["entry"])]
-    if exc.get("esa"):
-        idx.append(_ST_ORDER.index(exc["esa"]))
-    return min(idx)
-
-
-def _st_reachable(exc, level):
-    return _ST_ORDER.index(level) >= _st_top_index(exc)
-
-
-def _st_active_names(exc, level, tm_pct, yb_pct, lock_G):
-    active = {"T_offset"}
-    if not lock_G:
-        active.add("G")
-    if exc.get("esa"):
-        active.add("G2")
-        active.update(_ST_LEVEL_PARAMS[exc["entry"]])
-    for lvl in _ST_ORDER[_st_top_index(exc):_ST_ORDER.index(level)]:
-        active.update(_ST_FEEDER[lvl])
-    active.update(_ST_LEVEL_PARAMS[level])
-    if tm_pct >= 0.3:
-        active.add("Kcr")
-    if yb_pct > 0:
-        active.add("Kyb")
-    return [n for n in _ST_NAMES if n in active]
-
-
-def _st_rhs(t, y, p, on, ie, ie_esa, tm_pct, yb_pct):
-    H6, F4, H4, G4, D2, I6, P2 = y
-    (G, G2, A10, A30, A31, A50, A51, A53, A60, A61, A63,
-     A70, A71, W87, W76, W65, Kcr, Kyb) = p[:18]
-    cr = Kcr * tm_pct          # Tm–Tm cross-relaxation, scales with Tm mol%
-    yb = Kyb * yb_pct          # Tm -> Yb loss, scales with Yb mol%
-    cr1 = cr * H4 * H6         # ³H₄ + ³H₆ -> 2 ³F₄
-    cr2 = cr * D2 * H6         # ¹D₂ + ³H₆ -> ¹G₄ + ³F₄
-    d = [
-        A10*F4 + A30*H4 + A50*G4 + A60*D2 + A70*I6 + yb*(H4 + G4) - cr1 - cr2,
-        A31*H4 + A51*G4 + A61*D2 + A71*I6 - A10*F4 + 2.0*cr1 + cr2,
-        A53*G4 + A63*D2 - (A30 + A31 + yb)*H4 - cr1,
-        W65*D2 - (A50 + A51 + A53 + yb)*G4 + cr2,
-        W76*I6 - (A60 + A61 + A63 + W65)*D2 - cr2,
-        W87*P2 - (A70 + A71 + W76)*I6,
-        -W87*P2,
-    ]
-    exc = (G if on else 0.0) * H6          # direct (or GSA) pumping out of ³H₆
-    d[0] -= exc
-    d[ie] += exc
-    if ie_esa is not None and on:          # stepwise pumping: entry level -> ESA target
-        f = G2 * y[ie]
-        d[ie] -= f
-        d[ie_esa] += f
-    return d
-
-
-def _st_integrate(p, t_eval, pulse_ms, ie, ie_esa, tm_pct, yb_pct, rtol, atol):
-    """Two segments: pump on until pulse_ms, then pump off (no discontinuity inside a step)."""
-    y0 = np.zeros(7)
-    y0[0] = 1.0
-    out = np.zeros((7, t_eval.size))
-    on = t_eval <= pulse_ms
-    seg1 = np.unique(np.append(t_eval[on], pulse_ms))
-    s1 = solve_ivp(lambda t, y: _st_rhs(t, y, p, True, ie, ie_esa, tm_pct, yb_pct),
-                   [0.0, pulse_ms], y0, t_eval=seg1, method="LSODA", rtol=rtol, atol=atol)
-    if (not s1.success) or s1.y.shape[1] != seg1.size:
-        return None
-    out[:, on] = s1.y[:, np.searchsorted(seg1, t_eval[on])]
-    t_off = t_eval[~on]
-    if t_off.size:
-        s2 = solve_ivp(lambda t, y: _st_rhs(t, y, p, False, ie, ie_esa, tm_pct, yb_pct),
-                       [pulse_ms, float(t_off[-1])], s1.y[:, -1], t_eval=t_off,
-                       method="LSODA", rtol=rtol, atol=atol)
-        if (not s2.success) or s2.y.shape[1] != t_off.size:
-            return None
-        out[:, ~on] = s2.y
-    return out
-
-
-def _irf_convolve(signal, t_eval, pulse_ms):
-    if signal.size < 5 or t_eval.size < 2:
-        return signal
-    dt = float(np.median(np.diff(t_eval)))
-    if dt <= 0:
-        return signal
-    sigma = max(1.5 * dt, 0.045 * pulse_ms) / 2.355
-    radius = int(np.ceil(4.0 * sigma / dt))
-    if radius < 1:
-        return signal
-    g = np.arange(-radius, radius + 1) * dt
-    k = np.exp(-0.5 * (g / sigma) ** 2)
-    k /= k.sum() + 1e-12
-    return np.convolve(signal, k, mode="same")
-
-
-def _st_model(p, pulse_ms, t_arr, emission, exc, tm_pct, yb_pct, rtol=1e-8, atol=1e-11):
-    ts = t_arr - p[_ST_NAMES.index("T_offset")]
-    mask = ts >= 0
-    if not np.any(mask):
-        return None
-    ie = _ST_LEVELS.index(exc["entry"])
-    ie_esa = _ST_LEVELS.index(exc["esa"]) if exc.get("esa") else None
-    sol = _st_integrate(p, ts[mask], pulse_ms, ie, ie_esa, tm_pct, yb_pct, rtol, atol)
-    if sol is None:
-        return None
-    lvl, a = _ST_OBS[emission]
-    obs = np.clip(p[_ST_NAMES.index(a)] * sol[_ST_LEVELS.index(lvl)], 0.0, np.inf)
-    out = np.zeros(t_arr.size)
-    out[mask] = _irf_convolve(obs, ts[mask], pulse_ms)
-    return out
-
-
-def _st_tol_errors(t, y, f):
-    m, fm = compute_trace_metrics(t, y), compute_trace_metrics(t, f)
-
-    def ratio(key):
-        a, b = m.get(key), fm.get(key)
-        return None if a is None or b is None else abs(b - a) / max(abs(a), 1e-12)
-    return ratio("peak_time"), ratio("rise_time_10_90"), ratio("decay_tau_1e")
-
-
-def run_fitting_single_tm(time_ms, intensity, pulse_us, exc_key, emission, tm_pct, yb_pct,
-                          prior=None, lock_G=None, fit_quality="fast", optimize_all_points=False,
-                          target_r2=0.999, adaptive_max_cycles=4, peak_boost=1.0, early_boost=1.0,
-                          peak_tol=0.01, rise_tol=0.10, decay_tol=0.10, time_offset_ms=0.0,
-                          deadline=None, cancel_checker=None, progress_callback=None, seed=42,
-                          fit_pulse_width=True):
-    np.random.seed(seed)
-    exc = _ST_EXCITATION[exc_key]
-    level, _ = _ST_OBS[emission]
-
-    def check_cancel():
-        if callable(cancel_checker) and cancel_checker():
-            raise FitCancelled("Fit cancelled by user")
-
-    def over_budget():
-        return deadline is not None and time.perf_counter() > deadline
-
-    def report(**kw):
-        if callable(progress_callback):
-            try:
-                progress_callback(kw)
-            except Exception:
-                pass
-
-    base = dict(_ST_DEFAULTS)
-    for k, v in (prior or {}).items():
-        if k in base and np.isfinite(float(v)):
-            base[k] = float(v)
-    if yb_pct <= 0:
-        base["Kyb"] = 0.0
-    if lock_G:
-        base["G"] = float(lock_G)
-    max_off = float(np.max(time_ms)) * 0.3
-    base["T_offset"] = float(np.clip(time_offset_ms, 0.0, max_off))
-
-    active = _st_active_names(exc, level, tm_pct, yb_pct, bool(lock_G))
-    # A normalised trace cannot separate the observed level's individual rates (only their sum matters),
-    # so they are fitted as ONE scale factor "Lobs" that keeps the prior branching ratios.
-    obs_group = list(_ST_LEVEL_PARAMS[level])
-    free = [nm for nm in active if nm not in obs_group] + ["Lobs"]
-    p_nom = max(float(pulse_us) / 1000.0, 1e-6)
-    pulse_epsilon = max(p_nom * 1e-9, 1e-12)
-    p_lo, p_hi = ((0.7 * p_nom, 1.3 * p_nom) if fit_pulse_width
-                  else (p_nom - pulse_epsilon, p_nom + pulse_epsilon))
-    na = len(free)
-
-    def bnd(name):
-        if name == "T_offset":
-            return (0.0, max_off)
-        if name == "Lobs":
-            return (-2.0, 2.0)
-        lo, hi = _ST_BOUNDS.get(name, (1e-3, 100.0))
-        return (np.log10(lo), np.log10(hi))
-
-    bounds = [bnd(nm) for nm in free] + [(p_lo, p_hi)]
-    lower = np.array([b[0] for b in bounds])
-    upper = np.array([b[1] for b in bounds])
-
-    def u_from_base():
-        u = []
-        for nm in free:
-            lo, hi = bnd(nm)
-            if nm == "Lobs":
-                u.append(0.0)
-            elif nm == "T_offset":
-                u.append(np.clip(base[nm], lo, hi))
-            else:
-                u.append(np.clip(np.log10(max(base[nm], 1e-9)), lo, hi))
-        return np.array(u + [np.clip(p_nom, p_lo, p_hi)], dtype=float)
-
-    def unpack(u):
-        p = np.array([base[nm] for nm in _ST_NAMES], dtype=float)
-        for j, nm in enumerate(free):
-            if nm == "Lobs":
-                for gname in obs_group:
-                    p[_ST_NAMES.index(gname)] = base[gname] * 10.0 ** u[j]
-            elif nm == "T_offset":
-                p[_ST_NAMES.index(nm)] = u[j]
-            else:
-                p[_ST_NAMES.index(nm)] = 10.0 ** u[j]
-        return p, float(u[na])
-
-    cfg = {"fast": (12, 6, 180, 300), "balanced": (22, 8, 350, 600),
-           "accurate": (35, 10, 600, 1200)}.get(fit_quality, (12, 6, 180, 300))
-    de_iter, de_pop, ls_nfev, max_pts = cfg
-
-    npts = time_ms.size
-    if optimize_all_points or npts <= max_pts:
-        idx = np.arange(npts)
-    else:
-        pk = int(np.argmax(intensity))
-        w = max(10, npts // 20)
-        idx = np.unique(np.concatenate([np.linspace(0, npts - 1, int(max_pts * 0.65), dtype=int),
-                                        np.arange(max(0, pk - w), min(npts, pk + w)), [0, npts - 1]]))
-    t_fit, y_fit = time_ms[idx], intensity[idx]
-
-    def weights(t, y):
-        tn = (t - t.min()) / (np.ptp(t) + 1e-12)
-        return np.sqrt(0.25 + 0.55 * peak_boost * np.clip(y, 0, 1) ** 0.6
-                       + 0.20 * early_boost * np.exp(-3.0 * tn))
-
-    tol = {"rtol": 1e-6, "atol": 1e-9}     # loose for the global search, tight afterwards
-
-    def resid(u, t, y, sw):
-        check_cancel()
-        p, pw = unpack(u)
-        m = _st_model(p, pw, t, emission, exc, tm_pct, yb_pct, tol["rtol"], tol["atol"])
-        if m is None:
-            return np.full(2 * y.size + 1, 1e3)
-        s = np.sum(sw ** 2 * m * y) / (np.sum(sw ** 2 * m * m) + 1e-12)
-        f = np.clip(s * m, 0.0, None)
-        return np.concatenate([sw * (y - f),
-                               0.2 * sw * (np.log(f + 0.01) - np.log(y + 0.01)),
-                               [8.0 * peak_boost * (f.max() - y.max())]])
-
-    sw_fit = weights(t_fit, y_fit)
-    report(phase="initialise", message=f"Single-Tm fit: {exc_key} nm -> {emission} nm, "
-           f"free: {', '.join(free)} (Lobs = observed-level rates scaled together) + "
-           f"{'fitted pulse width' if fit_pulse_width else 'fixed pulse width'}.")
-
-    def obj(u):
-        r = resid(u, t_fit, y_fit, sw_fit)
-        return float(np.dot(r, r))
-
-    denom = float(np.sum((intensity - intensity.mean()) ** 2)) + 1e-12
-
-    def evaluate(u):
-        p, pw = unpack(u)
-        m = _st_model(p, pw, time_ms, emission, exc, tm_pct, yb_pct)
-        if m is None:
-            return None, None, p, pw
-        s = np.sum(m * intensity) / (np.sum(m * m) + 1e-12)
-        f = np.clip(s * m, 0.0, None)
-        return f, float(np.sum((intensity - f) ** 2)), p, pw
-
-    # Starting guess for the observed-level rate scale from the measured post-peak decay time.
-    u_tail = None
-    try:
-        ipk0 = int(np.argmax(intensity))
-        seg = slice(ipk0, None)
-        ts, ys = time_ms[seg], intensity[seg] / max(float(intensity[ipk0]), 1e-12)
-        sel = (ys < 0.7) & (ys > 0.1)
-        if sel.sum() >= 4:
-            slope = np.polyfit(ts[sel], np.log(ys[sel]), 1)[0]
-            if slope < 0 and "Lobs" in free:
-                r0 = sum(base[g] for g in obs_group)
-                u_tail = u_from_base()
-                u_tail[free.index("Lobs")] = float(np.clip(np.log10(max(-slope, 1e-6) / max(r0, 1e-9)), -2, 2))
-    except Exception:
-        u_tail = None
-
-    n_starts = {"fast": 3, "balanced": 4, "accurate": 5}.get(fit_quality, 3)
-    start_r2_goal = min(float(target_r2), 0.99)
-    best_u, best_sse = None, None
-    rng = np.random.default_rng(seed)
-    for k in range(n_starts):
-        if k > 0 and (over_budget() or (1.0 - best_sse / denom) >= start_r2_goal):
-            break
-        check_cancel()
-        if k == 0:
-            x0 = u_from_base()
-        elif k == 1 and u_tail is not None:
-            x0 = u_tail
-        else:
-            x0 = lower + rng.random(lower.size) * (upper - lower)
-        tol.update(rtol=1e-6, atol=1e-9)
-        res_g = differential_evolution(
-            obj, bounds, maxiter=de_iter, popsize=de_pop, seed=seed + k, tol=1e-3, polish=False, x0=x0,
-            callback=lambda xk, convergence=None: bool(
-                (callable(cancel_checker) and cancel_checker()) or over_budget()))
-        tol.update(rtol=1e-8, atol=1e-11)
-        check_cancel()
-        res_l = least_squares(resid, res_g.x, bounds=(lower, upper), args=(t_fit, y_fit, sw_fit),
-                              method="trf", loss="soft_l1", f_scale=0.05,
-                              max_nfev=20 if over_budget() else ls_nfev)
-        cand = res_l.x if res_l.success else res_g.x
-        _, c_sse, _, _ = evaluate(cand)
-        if c_sse is not None and (best_sse is None or c_sse < best_sse):
-            best_u, best_sse = cand, c_sse
-        if k > 0:
-            report(phase="retry", message=f"Retry {k}/{n_starts - 1}: best R2={1.0 - best_sse / denom:.5f}")
-    if best_u is None:
-        raise RuntimeError("Single-Tm fit failed: ODE solver did not converge")
-
-    fy, sse, p_best, pw_best = evaluate(best_u)
-    if fy is None:
-        raise RuntimeError("Single-Tm fit failed: ODE solver did not converge")
-
-    def tol_state(f):
-        pe_, re_, de_ = _st_tol_errors(time_ms, intensity, f)
-        bad_ = any(e is not None and e > t for e, t in ((pe_, peak_tol), (re_, rise_tol), (de_, decay_tol)))
-        return pe_, re_, de_, bad_
-
-    cycles, strikes = 0, 0
-    ones = np.ones(npts)
-    while cycles < adaptive_max_cycles and not over_budget():
-        check_cancel()
-        pe, re, de, bad = tol_state(fy)
-        if (1.0 - sse / denom) >= target_r2 and not bad:
-            break
-        cycles += 1
-        ipk = int(np.argmax(intensity))
-        h = max(2, npts // 12)
-        lo_i, hi_i = max(0, ipk - h), min(npts, ipk + h)
-        r_abs = np.abs(intensity - fy)
-        e_early = r_abs[:max(1, ipk)].mean()
-        e_peak = r_abs[lo_i:hi_i].mean()
-        e_tail = r_abs[ipk:].mean()
-        tot = e_early + e_peak + e_tail + 1e-12
-        b = min(5.0, 1.0 + 0.6 * cycles)
-        w = ones.copy()
-        w[:ipk] *= 1 + b * e_early / tot
-        w[lo_i:hi_i] *= 1 + b * e_peak / tot
-        w[ipk:] *= 1 + b * e_tail / tot
-        r = least_squares(resid, best_u, bounds=(lower, upper), args=(time_ms, intensity, np.sqrt(w)),
-                          method="trf", loss="linear", max_nfev=200 + 100 * strikes)
-        cf, csse, cp, cpw = evaluate(r.x)
-        if cf is not None and csse < sse:
-            best_u, fy, sse, p_best, pw_best, strikes = r.x, cf, csse, cp, cpw, 0
-        else:
-            strikes += 1
-            if strikes >= 2:
-                break
-        report(phase="adaptive_refine", adaptive_completed_cycles=cycles,
-               adaptive_max_cycles=adaptive_max_cycles, current_r2=float(1.0 - sse / denom),
-               message=f"Adaptive loop {cycles}/{adaptive_max_cycles} (R2={1.0 - sse / denom:.6f}).")
-
-    # Tail polish: a slow, slightly non-exponential tail carries little absolute weight, so it is
-    # under-fitted by the plain residuals. Re-fit with relative (tail-weighted) residuals and keep the
-    # result only if the tail error drops clearly while the overall R2 barely changes.
-    if not over_budget() and npts > 20:
-        try:
-            check_cancel()
-            ipk_t = int(np.argmax(intensity))
-            post = np.zeros(npts)
-            post[ipk_t:] = 1.0
-            rel_w = post / (intensity + 0.05)
-
-            def tail_err(f_):
-                return float(np.sum(post * np.abs(f_ - intensity) / (intensity + 0.05)) / max(post.sum(), 1.0))
-
-            def resid_tail(u):
-                check_cancel()
-                p_, pw_ = unpack(u)
-                m_ = _st_model(p_, pw_, time_ms, emission, exc, tm_pct, yb_pct)
-                if m_ is None:
-                    return np.full(2 * npts, 1e3)
-                s_ = np.sum(m_ * intensity) / (np.sum(m_ * m_) + 1e-12)
-                f_ = np.clip(s_ * m_, 0.0, None)
-                return np.concatenate([(intensity - f_), 0.5 * rel_w * (intensity - f_)])
-
-            r_t = least_squares(resid_tail, best_u, bounds=(lower, upper), method="trf", loss="linear",
-                                max_nfev=150)
-            tf, tsse, tp, tpw = evaluate(r_t.x)
-            if tf is not None and (tsse - sse) / denom <= 0.003 and tail_err(tf) < 0.95 * tail_err(fy):
-                best_u, fy, sse, p_best, pw_best = r_t.x, tf, tsse, tp, tpw
-                report(phase="tail_polish", current_r2=float(1.0 - sse / denom),
-                       message=f"Tail polish accepted (R2={1.0 - sse / denom:.6f}).")
-        except FitCancelled:
-            raise
-        except Exception:
-            pass
-
-    # Wide pulse-width rescue: if the +-30% pulse-width window cannot reproduce the data (e.g. the entered
-    # pulse is much longer than the real excitation), retry with the lower pulse bound opened up and keep
-    # the result only if it clearly improves the SSE. Good fits never reach this branch.
-    if fit_pulse_width and (1.0 - sse / denom) < 0.95 and not over_budget():
-        try:
-            lower_w = lower.copy()
-            upper_w = upper.copy()
-            lower_w[na] = 0.03 * p_nom
-            if "T_offset" in free:
-                jt = free.index("T_offset")
-                ipk_o = int(np.argmax(intensity))
-                above = np.where(intensity[:ipk_o + 1] >= 0.03)[0]
-                t_on = float(time_ms[above[0]]) if above.size else 0.0
-                if t_on > 0.0:
-                    lower_w[jt] = max(lower_w[jt], 0.7 * t_on)
-                    upper_w[jt] = min(upper_w[jt], 1.05 * t_on)
-            cands = []
-            for frac in (0.12, 0.3):
-                u0 = np.array(best_u, dtype=float)
-                u0[na] = np.clip(frac * p_nom, lower_w[na], p_hi)
-                cands.append(u0)
-            for k_w, u0 in enumerate(cands):
-                if over_budget():
-                    break
-                check_cancel()
-                tol.update(rtol=1e-6, atol=1e-9)
-                res_gw = differential_evolution(
-                    obj, list(zip(lower_w, upper_w)), maxiter=de_iter, popsize=de_pop, seed=142 + k_w,
-                    tol=1e-3, polish=False, x0=np.clip(u0, lower_w, upper_w),
-                    callback=lambda xk, convergence=None: bool(
-                        (callable(cancel_checker) and cancel_checker()) or over_budget()))
-                tol.update(rtol=1e-8, atol=1e-11)
-                check_cancel()
-                r_w = least_squares(resid, res_gw.x, bounds=(lower_w, upper_w),
-                                    args=(t_fit, y_fit, sw_fit), method="trf", loss="soft_l1",
-                                    f_scale=0.05, max_nfev=ls_nfev)
-                wf, wsse, wp, wpw = evaluate(r_w.x)
-                if wf is not None and wsse < 0.9 * sse:
-                    best_u, fy, sse, p_best, pw_best = r_w.x, wf, wsse, wp, wpw
-                    report(phase="retry", message=f"Pulse-width rescue: pulse {pw_best * 1000.0:.1f} us, "
-                           f"R2={1.0 - sse / denom:.5f}")
-        except FitCancelled:
-            raise
-        except Exception:
-            pass
-
-    # Slow-tail component: the ODE cascade decays near-exponentially and cannot generate a long, low-level
-    # tail (host/defect afterglow, energy migration, trap release). Fit "ODE trace + a*exp(-(t-t_pk)/tau_s)"
-    # with the ODE parameters re-optimised, and keep it only if the SSE drops by >= 15 %.
-    slow_tail = None
-    if (1.0 - sse / denom) < 0.995 and npts > 30:
-        try:
-            from scipy.optimize import nnls
-            check_cancel()
-            ipk_s = int(np.argmax(intensity))
-            t_pk = float(time_ms[ipk_s])
-            span = float(time_ms[-1] - t_pk)
-            if span > 0:
-                dt_s = np.where(time_ms >= t_pk, time_ms - t_pk, 0.0)
-                on_s = (time_ms >= t_pk).astype(float)
-                tau_lo, tau_hi = max(0.02 * span, 1e-6), 2.0 * span
-                rel_s = on_s / (intensity + 0.05)
-
-                def tail_shape(log_tau):
-                    return on_s * np.exp(-dt_s / 10.0 ** log_tau)
-
-                def mix(u_, log_tau):
-                    p_, pw_ = unpack(u_)
-                    m_ = _st_model(p_, pw_, time_ms, emission, exc, tm_pct, yb_pct)
-                    if m_ is None:
-                        return None, None, None
-                    tsh = tail_shape(log_tau)
-                    A = np.vstack([m_, tsh]).T
-                    Aw = np.vstack([A, 0.5 * rel_s[:, None] * A])
-                    bw = np.concatenate([intensity, 0.5 * rel_s * intensity])
-                    coef, _ = nnls(Aw, bw)
-                    return coef[0] * m_ + coef[1] * tsh, coef, tsh
-
-                def resid_slow(v):
-                    check_cancel()
-                    f_, _, _ = mix(v[:-1], v[-1])
-                    if f_ is None:
-                        return np.full(2 * npts, 1e3)
-                    return np.concatenate([intensity - f_, 0.5 * rel_s * (intensity - f_)])
-
-                lo_s = np.append(lower, np.log10(tau_lo))
-                hi_s = np.append(upper, np.log10(tau_hi))
-                starts = [best_u] + ([u_tail] if u_tail is not None else [])
-                best_s = None
-                for u0 in starts:
-                    for lt in np.log10(np.geomspace(tau_lo, tau_hi, 4)[1:3]):
-                        if over_budget() and best_s is not None:
-                            break
-                        v0 = np.clip(np.append(u0, lt), lo_s, hi_s)
-                        r_s = least_squares(resid_slow, v0, bounds=(lo_s, hi_s), method="trf",
-                                            loss="linear", max_nfev=120)
-                        f_s, coef_s, _ = mix(r_s.x[:-1], r_s.x[-1])
-                        if f_s is None or coef_s[1] <= 0:
-                            continue
-                        sse_s = float(np.sum((intensity - f_s) ** 2))
-                        if best_s is None or sse_s < best_s[0]:
-                            best_s = (sse_s, r_s.x, f_s, coef_s)
-                if best_s is not None and best_s[0] < 0.85 * sse:
-                    sse, v_s, fy, coef_s = best_s
-                    best_u = v_s[:-1]
-                    p_best, pw_best = unpack(best_u)
-                    slow_tail = {"amplitude": float(coef_s[1] / max(coef_s[0] * 1.0, 1e-12)),
-                                 "tau_ms": float(10.0 ** v_s[-1])}
-                    report(phase="tail_polish", current_r2=float(1.0 - sse / denom),
-                           message=f"Slow-tail component accepted: tau={slow_tail['tau_ms']:.3g} ms, "
-                                   f"R2={1.0 - sse / denom:.5f}")
-        except FitCancelled:
-            raise
-        except Exception:
-            pass
-
-    r2 = 1.0 - sse / denom
-    pe, re, de, bad = tol_state(fy)
-    at_bounds = [nm for j, nm in enumerate(free) if nm != "T_offset" and
-                 (best_u[j] >= upper[j] - 0.02 or best_u[j] <= lower[j] + 0.02)]
-    if at_bounds:
-        report(phase="bounds_check", message="Parameters at their bounds: " + ", ".join(at_bounds))
-    diag = {
-        "fit_quality": fit_quality, "n_points_full": int(npts), "n_points_opt": int(t_fit.size),
-        "optimize_all_points": bool(optimize_all_points), "active_params": active,
-        "fixed_params": [x for x in _ST_NAMES if x not in active],
-        "n_optimized_variables": na + int(fit_pulse_width), "n_fixed_params": len(_ST_NAMES) - na,
-        "fitted_pulse_width_us": pw_best * 1000.0, "pulse_width_optimized": bool(fit_pulse_width),
-        "guided_params": [],
-        "optimization": {"de_iterations": int(getattr(res_g, "nit", 0) or 0),
-                         "de_evaluations": int(getattr(res_g, "nfev", 0) or 0),
-                         "local_evaluations": int(getattr(res_l, "nfev", 0) or 0),
-                         "refine_evaluations": 0, "polish_passes": 0, "polish_evaluations": 0,
-                         "adaptive_r2_cycles": cycles},
-        "target_r2": float(target_r2), "achieved_r2": float(r2),
-        "adaptive_max_cycles": int(adaptive_max_cycles),
-        "peak_window_boost": float(peak_boost), "early_rise_boost": float(early_boost),
-        "tolerance_targets": {"peak": peak_tol, "rise": rise_tol, "decay": decay_tol},
-        "tolerance_achieved": {"peak": pe, "rise": re, "decay": de},
-        "all_tolerances_met": not bad, "params_at_bounds": at_bounds,
-        "time_budget_hit": bool(over_budget()),
-        "slow_tail_component": slow_tail,
-    }
-    return fy, dict(zip(_ST_NAMES, map(float, p_best))), sse, diag
-
-
-def over_target(diag, target_r2):
-    return diag["achieved_r2"] >= target_r2 and diag["all_tolerances_met"]
-
-
-def _fit_single_tm_route(payload, fit_request_id, t0):
-    exc_key, exc = _st_resolve_excitation(payload.get("excitation_wavelength"))
-    emission = str(payload.get("emission"))
-    if exc is None:
-        return jsonify({"error": f"Single-doped Tm has no ODE set for excitation "
-                                 f"{payload.get('excitation_wavelength')} nm. Supported: "
-                                 f"{sorted(_ST_EXCITATION)}.", "error_code": "UNSUPPORTED_EXCITATION"}), 400
-    allowed = _ST_ALLOWED_EMISSIONS.get(exc_key)
-    if emission not in _ST_OBS or not _st_reachable(exc, _ST_OBS[emission][0]) or (allowed and emission not in allowed):
-        return jsonify({"error": f"{emission} nm cannot be populated by {exc_key} nm excitation in this model.",
-                        "error_code": "UNREACHABLE_EMISSION"}), 400
-    try:
-        tm_pct = float(payload.get("doping_tm"))
-        single = str(payload.get("material_model", "")).lower() == "single_doped_tm"
-        yb_pct = 0.0 if single else float(payload.get("doping_yb", 0.0) or 0.0)
-    except (TypeError, ValueError):
-        return jsonify({"error": "Invalid doping values.", "error_code": "INVALID_DOPING"}), 400
-
-    unit_scale = {"ns": 1e-6, "us": 1e-3, "ms": 1.0}
-    t_ms = np.asarray(payload.get("time", []), dtype=float) * unit_scale.get(str(payload.get("time_unit", "ns")), 1e-6)
-    y = np.asarray(payload.get("intensity", []), dtype=float)
-    y = y - np.min(y)
-    pk = float(np.percentile(y, 99.5)) if y.size > 10 else float(np.max(y))
-    y = np.clip(y / pk, 0.0, 1.0) if pk > 1e-10 else np.zeros_like(y)
-
-    budget = float(payload.get("fit_time_budget_s", 0.0) or 0.0)
-    deadline = (time.perf_counter() + budget) if budget > 0 else None
-    cancel_checker = (lambda: is_fit_cancelled(fit_request_id)) if fit_request_id else None
-
-    def cb(info):
-        update_fit_progress(fit_request_id, status="running", **(info or {}))
-
-    quality = payload.get("fit_quality", "fast")
-    target_r2 = float(np.clip(float(payload.get("target_r2", 0.999)), 0.0, 0.999995))
-    kw = dict(prior=payload.get("single_tm_prior") or {}, lock_G=payload.get("single_tm_lock_G"),
-              optimize_all_points=bool(payload.get("optimize_all_points", False)),
-              target_r2=target_r2, adaptive_max_cycles=int(payload.get("adaptive_max_cycles", 4)),
-              peak_boost=float(np.clip(float(payload.get("peak_window_boost", 1.0)), 1.0, 10.0)),
-              early_boost=float(np.clip(float(payload.get("early_rise_boost", 1.0)), 1.0, 10.0)),
-              peak_tol=float(payload.get("peak_tolerance", 0.01)),
-              rise_tol=float(payload.get("rise_tolerance", 0.10)),
-              decay_tol=float(payload.get("decay_tolerance", 0.10)),
-              time_offset_ms=float(payload.get("time_offset_ms", 0.0) or 0.0),
-              deadline=deadline, cancel_checker=cancel_checker, progress_callback=cb,
-              seed=int(payload.get("fit_seed", 42) or 42),
-              fit_pulse_width=bool(payload.get("fit_pulse_width", True)))
-
-    fy, params, sse, diag = run_fitting_single_tm(t_ms, y, payload.get("pulse_width_us", 400), exc_key,
-                                                  emission, tm_pct, yb_pct, fit_quality=quality, **kw)
-    # one escalation to 'accurate' if the first pass missed its targets
-    if quality != "accurate" and payload.get("try_best_match", False) and not over_target(diag, target_r2):
-        fy2, params2, sse2, diag2 = run_fitting_single_tm(t_ms, y, payload.get("pulse_width_us", 400), exc_key,
-                                                          emission, tm_pct, yb_pct, fit_quality="accurate", **kw)
-        if sse2 < sse:
-            fy, params, sse, diag = fy2, params2, sse2, diag2
-
-    denom = float(np.sum((y - y.mean()) ** 2)) + 1e-12
-    r2 = 1.0 - sse / denom
-    ta, tt = diag["tolerance_achieved"], diag["tolerance_targets"]
-    actions, codes = [], []
-    if ta["peak"] is not None and ta["peak"] > tt["peak"]:
-        codes.append("FIT-E41")
-        actions.append({"code": "FIT-E41", "action": "boost_peak", "used_weight": kw["peak_boost"],
-                        "peak_window_boost": round(min(10.0, kw["peak_boost"] * 1.15), 3),
-                        "extra_adaptive_cycles": 3})
-    if ta["rise"] is not None and ta["rise"] > tt["rise"]:
-        codes.append("FIT-E42")
-        actions.append({"code": "FIT-E42", "action": "boost_early_rise", "used_weight": kw["early_boost"],
-                        "early_rise_boost": round(min(10.0, kw["early_boost"] * 1.15), 3),
-                        "fit_mode": "long", "extra_adaptive_cycles": 4})
-    if ta["decay"] is not None and ta["decay"] > tt["decay"]:
-        codes.append("FIT-E43")
-        actions.append({"code": "FIT-E43", "action": "improve_decay", "fit_mode": "long",
-                        "extra_adaptive_cycles": 4})
-    ipk = int(np.argmax(y))
-    h = max(2, y.size // 12)
-    ae = np.abs(y - fy)
-    regions = {"early": ae[:max(ipk, 1)].mean(), "peak": ae[max(0, ipk - h):ipk + h].mean(), "tail": ae[ipk:].mean()}
-    dom = max(regions, key=regions.get)
-    primary = codes[0] if codes else ("OK" if r2 >= target_r2 else
-                                      {"early": "FIT-E11", "peak": "FIT-E12", "tail": "FIT-E13"}[dom])
-    diag["troubleshooting"] = {
-        "summary": f"Single-Tm ODE fit ({exc_key} nm -> {emission} nm), R2={r2:.6f}.",
-        "target_r2": target_r2, "achieved_r2": r2, "target_reached": bool(r2 >= target_r2 and not codes),
-        "primary_error_code": primary, "error_code": primary, "legacy_error_code": primary,
-        "secondary_error_codes": codes[1:], "dominant_error_region": dom,
-        "region_mae": {k: float(v) for k, v in regions.items()},
-        "changes_applied": [f"{diag['fit_quality']} | all_points={diag['optimize_all_points']}"],
-        "recommendations": [f"[{a['code']}] see proposed action." for a in actions],
-        "proposed_actions": actions, "tolerance_codes": codes,
-    }
-    elapsed = (time.perf_counter() - t0) * 1000.0
-    diag["elapsed_ms"], diag["elapsed_min"] = elapsed, elapsed / 60000.0
-    update_fit_progress(fit_request_id, status="completed", phase="completed",
-                        current_r2=float(r2), message="Fit completed.")
-
-    active = set(diag["active_params"])
-    roles = {"direct": sorted(active), "indirect": [], "weakly_identifiable": [],
-             "note": "Free: pump rate, feeder rates on the path to the observed level, the observed level's own "
-                     "rates, T_offset. Everything else is held at the prior (or the value carried from an "
-                     "upstream channel)."}
-    return jsonify({
-        "r2": float(r2), "fitted_intensity": fy.tolist(), "measured_intensity": y.tolist(),
-        "params": {"G": params["G"], "T_offset": params["T_offset"]},
-        "ode_parameters": {k: v for k, v in params.items() if k in active},
-        "ode_parameter_units": {k: ("ms" if k == "T_offset" else "ms-1") for k in active},
-        "ode_parameter_time_base": "ms", "guide_parameters": {}, "parameter_roles": roles,
-        "single_tm_params_all": params,      # full set, for carry-forward to the next channel
-        "timing_metrics": {"time_unit": "ms", "measured": compute_trace_metrics(t_ms, y),
-                           "fitted": compute_trace_metrics(t_ms, fy)},
-        "influence_model": None, "diagnostics": diag,
-    })
 # =============================================================================
 # SECTION 6 – MAIN ODE FITTING ENGINE  (run_fitting)
 # =============================================================================
@@ -1340,7 +693,7 @@ def run_fitting(time_ms, intensity, pulse_us,
                  peak_tolerance=0.01, 
                  rise_tolerance=0.01, 
                  decay_tolerance=0.01, 
-                 progress_callback=None, deadline=None):
+                 progress_callback=None):
     np.random.seed(42)  # Ensure full reproducibility across every run
     p_ms_nominal = max(float(pulse_us) / 1000.0, 1e-6)
     y0 = [doping_yb/100, 0, doping_tm/100, 0, 0, 0, 0, 0, 0, 0, 0] #initial conditions set from doping conc
@@ -1364,10 +717,6 @@ def run_fitting(time_ms, intensity, pulse_us,
     check_cancel()
     report_progress(phase="initialise", message="Initialising optimizer.")
 
-    def over_budget():
-        return deadline is not None and time.perf_counter() > deadline
-
-    ode_tol = {"rtol": 1e-6, "atol": 1e-9}
     quality_cfg = {
         "fast": {"de_maxiter": 12, "de_popsize": 6, "ls_nfev": 180, "max_points": 320},
         "balanced": {"de_maxiter": 22, "de_popsize": 8, "ls_nfev": 350, "max_points": 600},
@@ -1380,7 +729,7 @@ def run_fitting(time_ms, intensity, pulse_us,
     # ── Reduced parameter space: only optimise the direct params for this emission ──
     all_param_names = [
         "Rp", "Ay", "W1", "W2", "W3", "W4", "W5", "k21", "k35",
-        "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "T_offset"
+        "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "WcrG4", "T_offset"
     ]
     param_roles = classify_parameter_roles(state_idx)
     active_set = set(param_roles["direct"])          # always includes T_offset
@@ -1388,12 +737,11 @@ def run_fitting(time_ms, intensity, pulse_us,
     guided_params_used = []
     # 477/645 depend strongly on the Tm5 feeder chain. Keeping these fixed can
     # cause broad/late peaks at higher Tm concentrations, so unlock them here.
-    # Wb (back-transfer) always included since it directly sets the Yb effective
-    # lifetime, which dominates the long-time tail visible in 477/645 nm.
+    # Wb can be fitted on 477/645 nm traces only when the Yb concentration gate is open.
     if emission_key_s in {"477", "645"}:
         # k35 (Tm3→Tm5) is the only path feeding Tm5 regardless of Tm concentration.
         # W1 (first ET step) is rate-limiting at low Yb since effective W1*Yb_e is halved.
-        feeder_params = {"W2", "A50", "Wcr", "Wb", "k35"}
+        feeder_params = {"W2", "A50", "Wcr", "WcrG4", "Wb", "k35"}
         if yb_pct < 7.0 or tm_pct < 0.3:
             feeder_params.add("W1")
         if tm_pct >= 0.8:
@@ -1404,10 +752,10 @@ def run_fitting(time_ms, intensity, pulse_us,
     # 362/452 (Tm7 channels) are one step downstream of Tm6 and are sensitive to
     # upstream feeder terms; keep these adjustable to avoid severe underfitting.
     if emission_key_s in {"362", "452"}:
-        feeder_params = {"W3", "A60", "A61", "Wcr"}
+        feeder_params = {"W3", "A60", "A61", "Wcr", "WcrG4"}
         if tm_pct >= 0.8:
             feeder_params.update({"W2", "A50", "k35"})
-        if tm_pct >= 1.5:
+        if tm_pct > 1.0:
             feeder_params.update({"Wb"})
         active_set.update(feeder_params)
         guided_params_used = sorted(list(set(guided_params_used).union(feeder_params)))
@@ -1415,7 +763,7 @@ def run_fitting(time_ms, intensity, pulse_us,
     # 345/347 (Tm8 channel) is a 5-photon process requiring the full cascade of
     # upstream ET rates unlocked.  A80 is excluded (Tm8 has no ground-state decay).
     if emission_key_s in {"345", "347"}:
-        feeder_params = {"W3", "W4", "A60", "A61", "A70", "A71", "Wcr"}
+        feeder_params = {"W3", "W4", "A60", "A61", "A70", "A71", "Wcr", "WcrG4"}
         if tm_pct >= 0.5:
             feeder_params.update({"W2", "A50", "k35", "Wb"})
         active_set.update(feeder_params)
@@ -1426,6 +774,13 @@ def run_fitting(time_ms, intensity, pulse_us,
         guided_params = {"W1", "k21", "A10"}
         active_set.update(guided_params)
         guided_params_used = sorted(list(set(guided_params_used).union(guided_params)))
+
+    if tm_pct < 1.0:
+        active_set.discard("Wcr")
+    if tm_pct <= 0.1:
+        active_set.discard("WcrG4")
+    if yb_pct <= 10.0:
+        active_set.discard("Wb")
 
     active_indices = [i for i, n in enumerate(all_param_names) if n in active_set]
     fixed_param_names = [n for i, n in enumerate(all_param_names) if i not in active_indices]
@@ -1452,32 +807,40 @@ def run_fitting(time_ms, intensity, pulse_us,
         2.0,   # A81   – Tm8→Tm1 (345 nm)
         5.0,   # Wcr   – cross-relaxation
         0.5,   # Wb    – back energy transfer Tm5(³H₄)→Yb_g→Yb_e
+        5.0,   # WcrG4 – ¹G₄ + ³H₆ → ³H₄ + ³F₄ cross-relaxation
         0.0,   # T_offset
     ], dtype=float)
 
-    # Apply user-supplied kinetic parameter overrides (all except Rp and T_offset can be preset).
+    # Apply any user-supplied literature overrides (all except Rp and T_offset can be preset).
     if lit_params and isinstance(lit_params, dict):
         for name, val in lit_params.items():
             if name in all_param_names:
                 idx_p = all_param_names.index(name)
                 param_defaults[idx_p] = float(val)
 
-    all_bounds = [(1e-4, 150.0)] * 18 + [(0.0, 50.0)] + [(0.0, max_offset)]
-    # At low Yb concentrations, the effective pump and transfer rates scale with Yb_e.
-    if 0.0 < yb_pct < 10.0:
-        low_yb_cap = float(np.clip(150.0 * (10.0 / yb_pct), 150.0, 600.0))
-        for _bi in (0, 2, 3, 4):  # Rp, W1, W2, W3
-            all_bounds[_bi] = (all_bounds[_bi][0], max(all_bounds[_bi][1], low_yb_cap))
+    all_bounds = [(1e-4, 150.0)] * 18 + [(0.0, 50.0), (1e-4, 150.0), (0.0, max_offset)]
+    # At low Yb concentrations the effective pump rate Rp*Yb_g and ET rates Wi*Yb_e
+    # are halved compared to 10% Yb, so the optimizer needs more room on Rp and W1-W3.
+    if yb_pct < 7.0:
+        low_yb_cap = 300.0
+        all_bounds[0] = (all_bounds[0][0], low_yb_cap)  # Rp
+        all_bounds[2] = (all_bounds[2][0], low_yb_cap)  # W1
+        all_bounds[3] = (all_bounds[3][0], low_yb_cap)  # W2
+        all_bounds[4] = (all_bounds[4][0], low_yb_cap)  # W3
     # High-order emission channels (345/362 nm) require fast cascaded ET rates that
     # can legitimately exceed the 150 ms⁻¹ default cap.  Rp, W4, W5, and for the
     # Tm8 channel also A81 is allowed up to 300 ms⁻¹ (A80 inactive in this system).
     if emission_key_s in {"345", "347", "362", "452"}:
         high_cap = 300.0
-        all_bounds[0]  = (all_bounds[0][0], max(all_bounds[0][1], high_cap))   # Rp
+        all_bounds[0]  = (all_bounds[0][0],  high_cap)   # Rp
         all_bounds[5]  = (all_bounds[5][0],  high_cap)   # W4
         all_bounds[6]  = (all_bounds[6][0],  high_cap)   # W5
         if emission_key_s in {"345", "347"}:
             all_bounds[16] = (all_bounds[16][0], high_cap)  # A81 (Tm8→Tm1, 345 nm)
+    for i, n in enumerate(all_param_names):
+        if n in LITERATURE_RANGES:
+            lo, hi = LITERATURE_RANGES[n]
+            all_bounds[i] = (max(all_bounds[i][0], lo), min(all_bounds[i][1], hi))
     bounds_active = [all_bounds[i] for i in active_indices]
 
     # Fit pulse width as a nuisance parameter to absorb instrument/timing uncertainty.
@@ -1603,7 +966,7 @@ def run_fitting(time_ms, intensity, pulse_us,
     sqrt_tail_full = np.sqrt(tail_w_full)
 
     def simulate(params_all, p_width_ms, t_arr):
-        t_shifted = t_arr - params_all[19]   # T_offset is now at index 19
+        t_shifted = t_arr - params_all[20]   # T_offset is now at index 20
         mask = t_shifted >= 0
         if not np.any(mask):
             return None, None
@@ -1615,10 +978,10 @@ def run_fitting(time_ms, intensity, pulse_us,
                 [0, float(np.max(t_shifted))],
                 y0,
                 t_eval=t_eval,
-                args=(params_all[:19], p_width_ms),  # pass physical params + fitted pulse width
+                args=(np.append(params_all[:20], [tm_pct, yb_pct]), p_width_ms),
                 method="Radau",
-                rtol=ode_tol["rtol"],
-                atol=ode_tol["atol"],
+                rtol=1e-8,
+                atol=1e-11,
             )
         except Exception:
             return None, None
@@ -1889,13 +1252,8 @@ def run_fitting(time_ms, intensity, pulse_us,
 
     # SciPy may pass convergence as a keyword argument in some versions.
     def de_cancel_callback(_xk, convergence=None):
-        return bool(callable(cancel_checker) and cancel_checker()) or over_budget()
+        return bool(callable(cancel_checker) and cancel_checker())
 
-    x_seed = np.array(
-        [float(np.clip(param_defaults[gi], lower[j], upper[j])) for j, gi in enumerate(active_indices)]
-        + ([float(np.clip(p_ms_nominal, p_ms_lower, p_ms_upper))] if fit_pulse_width else []),
-        dtype=float,
-    )
     res_global = differential_evolution(
         objective,
         bounds_active,
@@ -1905,14 +1263,7 @@ def run_fitting(time_ms, intensity, pulse_us,
         tol=1e-3,
         polish=False,
         callback=de_cancel_callback,
-        x0=x_seed,
     )
-    ode_tol.update(rtol=1e-8, atol=1e-11)
-    if over_budget():
-        report_progress(
-            phase="time_budget",
-            message="Fit time budget reached during global search; finishing with the best solution so far.",
-        )
 
     check_cancel()
 
@@ -1923,7 +1274,7 @@ def run_fitting(time_ms, intensity, pulse_us,
         method="trf",
         loss="soft_l1",
         f_scale=0.05,
-        max_nfev=(20 if over_budget() else cfg["ls_nfev"]),
+        max_nfev=cfg["ls_nfev"],
     )
 
     check_cancel()
@@ -2026,8 +1377,6 @@ def run_fitting(time_ms, intensity, pulse_us,
     max_passes, nfev_per_pass = polish_budget
 
     for _ in range(max_passes):
-        if over_budget():
-            break
         check_cancel()
         r2_now = 1.0 - final_sse / denom
         if r2_now >= 0.9999:
@@ -2110,7 +1459,7 @@ def run_fitting(time_ms, intensity, pulse_us,
     consecutive_no_improve = 0
     MAX_NO_IMPROVE = 3  # Allow up to 3 strategy changes before giving up
 
-    while (r2_not_met or tol_exceeded) and adapt_cycles_done < MAX_ADAPT_CYCLES and not over_budget():
+    while (r2_not_met or tol_exceeded) and adapt_cycles_done < MAX_ADAPT_CYCLES:
         check_cancel()
         adapt_cycles_done += 1
 
@@ -2272,22 +1621,6 @@ def run_fitting(time_ms, intensity, pulse_us,
     total_evals = de_nfev + ls_nfev + refine_nfev + polish_nfev_total
 
     final_tol_p, final_tol_r, final_tol_d = _compute_tolerance_errors(final_y)
-    at_bounds = []
-    for _j, _gi in enumerate(active_indices):
-        _name = all_param_names[_gi]
-        if _name == "T_offset":
-            continue
-        _v = float(best_active[_j])
-        if _v >= 0.98 * float(upper[_j]):
-            at_bounds.append(f"{_name}(max)")
-        elif _v <= max(1.05 * float(lower[_j]), float(lower[_j]) + 1e-9):
-            at_bounds.append(f"{_name}(min)")
-    if at_bounds:
-        report_progress(
-            phase="bounds_check",
-            message="Parameters at their bounds: " + ", ".join(at_bounds) +
-                    ". Widen bounds or revisit composition / pulse inputs if R2 is low.",
-        )
     diagnostics = {
         "fit_quality": fit_quality,
         "n_points_full": int(time_ms.size),
@@ -2327,8 +1660,6 @@ def run_fitting(time_ms, intensity, pulse_us,
             "decay": final_tol_d,
         },
         "all_tolerances_met": not _tolerances_exceeded(final_y),
-        "params_at_bounds": at_bounds,
-        "time_budget_hit": bool(over_budget()),
     }
     # Return the full 19-vector so the route handler can reference all param names uniformly.
     return final_y, best_full, final_sse, diagnostics
@@ -2341,7 +1672,7 @@ def run_fitting(time_ms, intensity, pulse_us,
 def _build_time_axis_from_payload(payload):
     """Read time axis from payload, or create one from (time_max_ms, num_points)."""
     unit_scale = {"ns": 1e-6, "us": 1e-3, "ms": 1.0}
-    time_unit = str(payload.get("time_unit", physics_state.get("time_unit", "ns")))
+    time_unit = str(payload.get("time_unit", physics_state.get("time_unit", "ms")))
     scale = float(unit_scale.get(time_unit, 1.0))
 
     t_input = np.asarray(payload.get("time", []), dtype=float)
@@ -2533,7 +1864,7 @@ def solve_luminescence_simulation_flow(payload):
             emissions = [str(payload.get("emission", "477"))]
         yb = float(payload.get("doping_yb", physics_state.get("doping_yb", 10.0)))
         tm = float(payload.get("doping_tm", physics_state.get("doping_tm", 0.1)))
-        pulse_us = float(payload.get("pulse_width_us", 400.0))
+        pulse_us = float(payload.get("pulse_width_us", 100.0))
 
         params = _default_kinetic_params()
         lit_params = payload.get("lit_params") or {}
@@ -2715,9 +2046,8 @@ def fit():
         lum_type = str(payload.get("luminescence_type", "upconversion")).lower()
         up_mech = str(payload.get("upconversion_mechanism", "etuc")).lower()
         model_system = str(payload.get("material_model", "co_doped_yb_tm")).lower()
-        if model_system == "single_doped_tm" or lum_type == "downshifting":
-            return _fit_single_tm_route(payload, fit_request_id, t0)
         is_etuc_pipeline = (lum_type == "upconversion" and up_mech == "etuc" and model_system != "single_doped_tm")
+
         # Non-ETUC paths are solved by a dedicated optimization flow.
         if not is_etuc_pipeline:
             update_fit_progress(
@@ -2774,8 +2104,6 @@ def fit():
         emission_value = str(payload.get("emission"))
         use_775_calibration = bool(payload.get("use_775_calibration", emission_value == "775"))
         requested_target_r2 = float(payload.get("target_r2", 0.9999))
-        fit_time_budget_s = float(payload.get("fit_time_budget_s", 0.0) or 0.0)
-        fit_deadline = (time.perf_counter() + fit_time_budget_s) if fit_time_budget_s > 0 else None
         requested_adaptive_cycles = int(payload.get("adaptive_max_cycles", 4))
         requested_peak_window_boost = float(payload.get("peak_window_boost", 1.0))
         requested_early_rise_boost = float(payload.get("early_rise_boost", 1.0))
@@ -2904,7 +2232,6 @@ def fit():
             rise_tolerance=rise_tolerance,
             decay_tolerance=decay_tolerance,
             progress_callback=progress_cb,
-            deadline=fit_deadline,
         )
 
         # Automatic best-fit search: sweep quality/all-points combinations and keep
@@ -2936,14 +2263,14 @@ def fit():
                 add_candidate(q, optimize_all_points, "quality_sweep")
 
         # For very high R^2 targets, include full-point optimization attempts.
-        if try_best_match and target_r2 >= 0.9997 and not optimize_all_points:
+        if target_r2 >= 0.9997 and not optimize_all_points:
             base_qualities = quality_order[requested_idx:] if try_best_match else [requested_quality]
             for q in base_qualities:
                 add_candidate(q, True, "all_points_for_high_target")
 
         # For high target R2, run one strict accurate+all-points pass for any
         # supported emission to tighten apex and rise alignment consistently.
-        if try_best_match and emission_value in emission_map and target_r2 >= 0.9999:
+        if emission_value in emission_map and target_r2 >= 0.9999:
             add_candidate("accurate", True, f"{emission_value}_strict_peak_pass")
 
         # First fit already computed above; use it as baseline.
@@ -2969,20 +2296,6 @@ def fit():
         for idx_attempt, (q, all_points, reason) in enumerate(candidate_plan, start=1):
             if q == requested_quality and bool(all_points) == bool(optimize_all_points):
                 continue
-            if (1.0 - (best_sse / denom)) >= target_r2 and best_diag.get("all_tolerances_met", False):
-                attempt_logs.append({
-                    "quality": q, "optimize_all_points": bool(all_points), "reason": reason,
-                    "r2": float(1.0 - (best_sse / denom)), "sse": float(best_sse),
-                    "accepted": False, "from_cached_run": False,
-                    "skipped": "target R2 and tolerances already met",
-                })
-                break
-            if fit_deadline is not None and time.perf_counter() > fit_deadline:
-                update_fit_progress(
-                    fit_request_id, status="running", phase="time_budget",
-                    message="Fit time budget reached; skipping remaining candidates.",
-                )
-                break
 
             update_fit_progress(
                 fit_request_id,
@@ -3025,10 +2338,6 @@ def fit():
                 peak_window_boost=requested_peak_window_boost,
                 early_rise_boost=requested_early_rise_boost,
                 progress_callback=candidate_progress_cb,
-                peak_tolerance=peak_tolerance,
-                rise_tolerance=rise_tolerance,
-                decay_tolerance=decay_tolerance,
-                deadline=fit_deadline,
             )
 
             r2_c = 1.0 - (float(sse_c) / denom)
@@ -3188,7 +2497,7 @@ def fit():
 
         param_names = [
             "Rp", "Ay", "W1", "W2", "W3", "W4", "W5", "k21", "k35",
-            "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "T_offset"
+            "A10", "A50", "A60", "A61", "A70", "A71", "A80", "A81", "Wcr", "Wb", "WcrG4", "T_offset"
         ]
         params_all = {name: float(val) for name, val in zip(param_names, best_params)}
         all_units = {
@@ -3211,6 +2520,7 @@ def fit():
             "A81": "ms-1",
             "Wcr": "ms-1",
             "Wb":  "ms-1",
+            "WcrG4": "ms-1",
             "T_offset": "ms",
         }
 
@@ -3357,6 +2667,7 @@ def fit():
         direct_params = set(param_roles["direct"])  # already includes T_offset
         selected_params = {k: v for k, v in params_all.items() if k in direct_params}
         param_units = {k: v for k, v in all_units.items() if k in direct_params}
+        lit_violations = literature_violations(selected_params)
 
         # Extra guided parameters from 775 calibration stage (non-direct but informative for transfer).
         guided_names = [p for p in diag.get("guided_params", []) if p in params_all]
@@ -3379,9 +2690,12 @@ def fit():
                 "W_ET1": float(best_params[2]),
                 "W_CR": float(best_params[17]),
                 "Wb": float(best_params[18]),
-                "T_offset": float(best_params[19])
+                "W_CR_G4": float(best_params[19]),
+                "T_offset": float(best_params[20])
             },
             "ode_parameters": selected_params,
+            "literature_violations": {k: {"value": v[0], "min": v[1], "max": v[2]} for k, v in lit_violations.items()},
+            "literature_accepted": not lit_violations,
             "ode_parameter_units": param_units,
             "ode_parameter_time_base": "ms",
             "guide_parameters": guide_parameters,
@@ -3442,7 +2756,7 @@ def cancel_fit():
 @app.route("/api/configure_physics", methods=["POST"])
 def configure_physics():
     config = request.get_json() or {}
-    time_unit = str(config.get("time_unit", "ns"))
+    time_unit = str(config.get("time_unit", "ms"))
     time_scale = {"ns": 1e-6, "us": 1e-3, "ms": 1.0}.get(time_unit, 1.0)
     host = str(config.get("host", "NaYF4"))
     phonon_energy_cm = float(config.get("phonon_energy_cm", 350.0) or 350.0)
@@ -3471,7 +2785,10 @@ def configure_physics():
         "model_selected": "multilevel_ode",
         "regime": regime,
         "w_et_upper": 150.0,
-        "w_cr_active": bool(physics_state.get("doping_tm", 0.0) > 0.0),
+        "w_cr_active": bool(physics_state.get("doping_tm", 0.0) > 0.1),
+        "w_cr_g4_active": bool(physics_state.get("doping_tm", 0.0) > 0.1),
+        "w_cr_h4_active": bool(physics_state.get("doping_tm", 0.0) >= 1.0),
+        "w_b_active": bool(physics_state.get("doping_yb", 0.0) > 10.0),
         "time_scale_factor": float(time_scale),
         "host": host,
         "phonon_energy_cm": phonon_energy_cm,
@@ -3511,7 +2828,7 @@ def simulate_lifetime_route():
         yb_pct      = float(payload.get("yb_pct", 10.0))
         tm_pct      = float(payload.get("tm_pct", 0.1))
         emissions   = [str(e) for e in (payload.get("emissions") or ["775", "477", "645", "362", "345"])]
-        pulse_us    = float(payload.get("pulse_us", 400.0))
+        pulse_us    = float(payload.get("pulse_us", 100.0))
         time_max_ms = float(payload.get("time_max_ms", 15.0))
         num_points  = int(np.clip(int(payload.get("num_points", 500)), 100, 2000))
         host_material = payload.get("host_material", "NaYF4")
@@ -3660,7 +2977,7 @@ def estimate_composition_route():
         user_params  = payload.get("lit_params") or {}
         yb_range     = [float(v) for v in (payload.get("yb_range") or [1.0, 50.0])]
         tm_range     = [float(v) for v in (payload.get("tm_range") or [0.01, 5.0])]
-        pulse_us     = float(payload.get("pulse_us", 400.0))
+        pulse_us     = float(payload.get("pulse_us", 100.0))
         host_material = payload.get("host_material", "NaYF4")
         annealing_c = float(payload.get("annealing_c", 500.0))
         phonon_energy_cm = payload.get("phonon_energy_cm", None)
@@ -3684,7 +3001,7 @@ def estimate_composition_route():
             if name in _SIM_PARAM_NAMES:
                 params[_SIM_PARAM_NAMES.index(name)] = float(val)
 
-        candidate_kinetics = payload.get("kinetics_to_optimize") or ["W1", "W2", "W3", "k21", "k35", "Wcr", "Wb", "A50", "A60", "A61"]
+        candidate_kinetics = payload.get("kinetics_to_optimize") or ["W1", "W2", "W3", "k21", "k35", "Wcr", "WcrG4", "Wb", "A50", "A60", "A61"]
         kinetic_names = [
             str(k) for k in candidate_kinetics
             if str(k) in _SIM_PARAM_NAMES and str(k) not in {"T_offset", "Rp"}
@@ -4023,4 +3340,4 @@ load_weights()
 
 if __name__ == "__main__":
     # Ensure app.run uses 0.0.0.0 to allow access from local network if needed
-    app.run(host="0.0.0.0", port=5002, debug=True)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
